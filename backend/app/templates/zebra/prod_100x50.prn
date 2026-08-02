@@ -1,0 +1,37 @@
+^XA
+^PW800
+^LL400
+^PR4,4
+~SD15
+
+##################################################
+# 1. CÓDIGO DE BARRAS (CENTRADO POR BLOQUE)
+# Dejamos un margen de 50 puntos a cada lado (800 - 100 = 700)
+# El ^FB700 con el parámetro 'C' centrará el código de barras.
+##################################################
+^BY2,3,130
+^FO250,50
+^FB300,1,0,C
+^BCN,130,N,N,N
+^FD{OITM.ItemCode}^FS
+
+##################################################
+# 2. CÓDIGO DEL ÍTEM (TEXTO GRANDE)
+##################################################
+^FO50,200
+^A0N,70,70
+^FB700,1,0,C
+^FD{OITM.ItemCode}^FS
+
+##################################################
+# 3. NOMBRE DEL PRODUCTO (TEXTO MEDIANO)
+##################################################
+^FO50,290
+^A0N,40,40
+^FB700,2,0,C
+^FD{OITM.ItemName}^FS
+
+### NÚMERO DE COPIAS DINÁMICO ###
+^PQ{COPIES}
+
+^XZ

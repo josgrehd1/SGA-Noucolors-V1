@@ -1,0 +1,83 @@
+:root {
+    --nou-colors-blue: #232634;
+    --nou-colors-light-gray: #f5f5f5;
+    --nou-colors-border-gray: #ddd;
+}
+
+@page {
+    size: A4;
+    margin: 5cm 1.5cm 4cm 1.5cm;
+
+    @top-center {
+        content: element(header_repeat);
+    }
+    @bottom-center {
+        content: element(footer_repeat);
+    }
+}
+
+#header-running {
+    position: running(header_repeat);
+    width: 100%;
+}
+
+.bottom-container {
+    position: running(footer_repeat);
+    width: 100%;
+}
+
+body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    color: #333;
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+table {
+    border-collapse: collapse;
+    page-break-inside: auto;
+}
+
+tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+}
+
+.section-title {
+    font-size: 11px;
+    font-weight: bold;
+    color: var(--nou-colors-blue);
+    border-bottom: 2px solid var(--nou-colors-blue);
+    margin-bottom: 5px;
+    letter-spacing: 0.5px;
+}
+
+.important-box {
+    border-top: 1px solid var(--nou-colors-blue);
+    padding-top: 6px;
+    margin-bottom: 10px;
+}
+
+.important-title {
+    font-weight: bold;
+    font-size: 10px;
+    color: var(--nou-colors-blue);
+    margin-bottom: 2px;
+}
+
+.header-table,
+.info-table {
+    width: 100%;
+    margin-bottom: 10px;
+}
+
+.logo {
+    width: 200px;
+}
+
+.company-info {
+    text-align: right;
+    font-size: 9px;
+    color: #555;
+    line-height: 1.4;
+}

@@ -1,0 +1,22 @@
+^XA
+^CI28^FX Enable UTF-8 encoding for Spanish characters (ñ, ó, etc.)
+
+^FX --- LOGO / COMPANY NAME ---
+^CF0,40,25
+^FO40,30^FDNouColors^FS
+^CF0,14,12
+^FO40,65^FDSoluciones Tecnicas en limpieza^FS
+
+^FX --- PACKAGE COUNT (BULTOS) ---
+^CF0,24,20
+^FO420,30^FDBULTOS:^FS
+^FO500,30^FD{bulto_actual} de {bultos_totales}^FS
+
+^FX --- SHIPPING DETAILS ---
+^CF0,24,20
+^FO40,100^FD{cliente}^FS
+^FO40,140^FD{clave_direccion}^FS
+^FO40,180^FDAREA: {area}^FS
+^FO40,220^FDDIRECCION: {direccion}^FS
+
+^XZ

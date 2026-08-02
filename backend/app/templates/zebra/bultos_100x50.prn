@@ -1,0 +1,29 @@
+^XA
+^CI28^FX Habilitar codificación UTF-8 para caracteres españoles
+
+^FX --- CONFIGURACIÓN DE TAMAÑO ---
+^PW800^FX Ancho de impresión: 800 puntos (100mm)
+^LL400^FX Alto de etiqueta: 400 puntos (50mm)
+
+^FX --- LOGO / NOMBRE EMPRESA ---
+^CF0,65,45^FX Letras de NouColors considerablemente más grandes
+^FO40,35^FDNouColors^FS
+^CF0,22,16^FX Subtítulo más grande y visible
+^FO40,105^FDSoluciones Tecnicas en limpieza^FS
+
+^FX --- TOTAL BULTOS (Alineado a la derecha y más grande) ---
+^CF0,36,30^FX Fuente más gruesa para que resalte
+^FO400,50^FDBULTOS:^FS
+^FO580,50^FD{bulto_actual} de {bultos_totales}^FS
+
+^FX --- LÍNEA SEPARADORA VISUAL ---
+^FO40,145^GB720,4,4^FS^FX Línea ligeramente más gruesa (4 puntos)
+
+^FX --- DATOS DE ENVÍO (Distribuidos hacia abajo para quitar el espacio en blanco) ---
+^CF0,36,28^FX Letras del texto principal aumentadas de tamaño
+^FO40,175^FD{cliente}^FS
+^FO40,230^FD{clave_direccion}^FS
+^FO40,285^FDAREA: {area}^FS
+^FO40,340^FDDIRECCION: {direccion}^FS
+
+^XZ

@@ -1,0 +1,6 @@
+{
+    "Impresora Zebra Akua": {"IP": "192.168.1.33", "Size": "100X50", "IPPDF": "192.168.1.249", "NOMIMPPDF": "ImpresoraAkua"},
+    "Impresora Zebra Recambios": {"IP": "192.168.1.26", "Size": "80X30", "IPPDF": "192.168.1.223", "NOMIMPPDF": "ImpresoraRecambios"},
+    "Impresora Zebra Valencia": {"IP": "192.168.101.4", "Size": "80X30", "IPPDF": "192.168.101.2", "NOMIMPPDF": "ImpresoraValencia"},
+    "Impresora Sergio": {"IP": "192.168.1.26", "Size": "80X30", "IPPDF": "192.168.1.241", "NOMIMPPDF": "ImpresoraSergio"}
+}

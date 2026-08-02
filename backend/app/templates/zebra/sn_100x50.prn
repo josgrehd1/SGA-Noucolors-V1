@@ -1,0 +1,58 @@
+^XA
+^PW800
+^LL400
+^PR4,4  ~SD15  # Ajuste de velocidad y oscuridad para mayor nitidez
+
+##################################################
+# CÓDIGO DE BARRAS IZQUIERDO (ItemCode)
+##################################################
+# Aumentamos el ancho a 2 para que sea legible
+^BY2,3,110
+^FO50,30
+^BCN,110,Y,N,N  # Cambié el tercer N por Y para que veas el texto y verifiques si el dato es correcto
+^FD{OITM.ItemCode}^FS
+
+##################################################
+# CÓDIGO DE BARRAS DERECHO (DistNumber)
+##################################################
+^BY2,3,110
+^FO420,30
+^BCN,110,Y,N,N
+^FD{OSRN.DistNumber}^FS
+
+##################################################
+# DESCRIPCIÓN
+##################################################
+^FT50,260
+^A0N,36,36
+^FB700,2,6,L
+^FD{OITM.ItemName}^FS
+
+##################################################
+# Nº SERIE DERECHA
+##################################################
+^FT460,330
+^A0N,32,32
+^FB300,2,2
+^FDS/N: {OSRN.DistNumber}^FS
+^FT461,330
+^A0N,32,32
+^FB300,2,2
+^FDS/N:^FS
+
+##################################################
+# Nº SERIE IZQUIERDA
+##################################################
+^FT50,330
+^A0N,32,32
+^FB300,2,2,L
+^FDProducto:\&{OITM.ItemCode}^FS
+^FT51,330
+^A0N,32,32
+^FB300,2,2,L
+^FDProducto:^FS
+
+### NÚMERO DE COPIAS DINÁMICO ###
+^PQ{COPIES}
+
+^XZ

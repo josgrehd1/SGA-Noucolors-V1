@@ -1,0 +1,19 @@
+# Archivos de entorno y secretos
+.env
+*.env.local
+
+# Node.js
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Python & Flask
+backend/flask_session/
+backend/logs/
+backend/.env
+__pycache__/
+
+# IDEs
+.vscode/
+.idea/

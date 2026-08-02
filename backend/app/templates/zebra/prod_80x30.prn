@@ -1,0 +1,20 @@
+^XA
+^PW639
+^LL400  ### Aumentamos el largo de la etiqueta para dar espacio a la segunda línea de texto ###
+
+### LÍNEA 2: Código de Barras (Centro) ###
+^BY2,3,75^FT40,100^BCN,,N,N
+^FD{OITM.ItemCode}^FS
+
+### LÍNEA 1: Código del Item ###
+^FT40,145^A0N,35,35^FD{OITM.ItemCode}^FS
+
+### LÍNEA 3: Nombre del Item con SALTO DE LÍNEA ###
+# ^FB[Ancho],[Líneas Max],[Espaciado],[Alineación]
+# Definimos un ancho de 560 puntos para dejar margen y permitimos hasta 3 líneas.
+^FT40,250^A0N,30,30^FB560,3,0,L^FD{OITM.ItemName}^FS
+
+### NÚMERO DE COPIAS DINÁMICO ###
+^PQ{COPIES}
+
+^XZ

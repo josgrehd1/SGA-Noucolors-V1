@@ -1,0 +1,330 @@
+from flask import Blueprint, jsonify, request, session, make_response
+from app.services.auth_service import AuthService
+from app.services.stock_service import StockService
+from app.services.docs_service import DocsService
+from app.services.albaran_service import AlbaranService
+from app.services.print_service import PrintService
+from app.services.search_service import SearchService
+from app.utils.decorators import sap_login_required
+
+api_bp = Blueprint('api', __name__, url_prefix='/api')
+
+# ==============================================================================
+# 1. RUTAS DE AUTENTICACIÓN (/api/auth)
+# ==============================================================================
+
+@api_bp.route('/auth/login', methods=["POST"])
+def login():
+    data = request.get_json() or {}
+    username = data.get('username')
+    password = data.get('password')
+    company_db = data.get('company_db', 'NOUCOLORS')
+
+    if not username or not password:
+        return jsonify({'status': 'error', 'message': 'Faltan credenciales de usuario o contraseña'}), 400
+
+    success, msg = AuthService.login(username=username, password=password, company_db=company_db)
+    if success:
+        return jsonify({
+            'status': 'ok',
+            'message': msg,
+            'user': {
+                'username': username,
+                'company_db': company_db
+            }
+        })
+    else:
+        return jsonify({'status': 'error', 'message': msg}), 401
+
+@api_bp.route('/auth/logout', methods=["POST"])
+def logout():
+    AuthService.logout()
+    return jsonify({'status': 'ok', 'message': 'Sesión cerrada correctamente'})
+
+@api_bp.route('/auth/session', methods=["GET"])
+def check_session():
+    if session.get('sap_session'):
+        return jsonify({
+            'authenticated': True,
+            'user': {
+                'username': session.get('sap_username', ''),
+                'company_db': session.get('company_db', '')
+            }
+        })
+    return jsonify({'authenticated': False}), 200
+
+# ==============================================================================
+# 2. RUTAS DE STOCK Y UBICACIONES (/api/stock)
+# ==============================================================================
+
+@api_bp.route('/stock', methods=["GET"])
+@sap_login_required
+def get_stock():
+    try:
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 20))
+        filters = {
+            'itemcode': request.args.get('itemcode', ''),
+            'itemname': request.args.get('itemname', ''),
+            'ubicacion': request.args.get('ubicacion', ''),
+            'tipo': request.args.get('tipo', ''),
+            'con_stock': request.args.get('con_stock', '') == 'true'
+        }
+        res = StockService.get_stock(page=page, per_page=per_page, filters=filters)
+        return jsonify({'status': 'ok', **res})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@api_bp.route('/stock/<path:itemcode>/necesidades', methods=["GET"])
+@sap_login_required
+def get_stock_necesidades(itemcode):
+    try:
+        res = StockService.get_necesidades(itemcode)
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@api_bp.route('/stock/<path:itemcode>/movimientos', methods=["GET"])
+@sap_login_required
+def get_stock_movimientos(itemcode):
+    try:
+        res = StockService.get_movimientos(itemcode)
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+# ==============================================================================
+# 3. RUTAS DE DOCUMENTOS Y OPERACIONES (/api/docs)
+# ==============================================================================
+
+@api_bp.route('/docs/<objtype>', methods=["GET"])
+@sap_login_required
+def get_documentos(objtype):
+    try:
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 20))
+        filters = {
+            'docnum': request.args.get('docnum', ''),
+            'cliente': request.args.get('cliente', ''),
+            'tipo_venta': request.args.get('tipo_venta', '')
+        }
+        ver_inactivos = request.args.get('ver_inactivos', 'false').lower() == 'true'
+        res = DocsService.get_documentos(objtype=objtype, page=page, per_page=per_page, filters=filters, ver_inactivos=ver_inactivos)
+        return jsonify({'status': 'ok', **res})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@api_bp.route('/docs/detalle', methods=["GET"])
+@sap_login_required
+def get_detalle_documento():
+    try:
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 20))
+        filters = {
+            'docentry': request.args.get('docentry', ''),
+            'objtype': request.args.get('objtype', ''),
+            'itemcode': request.args.get('itemcode', '')
+        }
+        res = DocsService.get_detalle_documento(page=page, per_page=per_page, filters=filters)
+        return jsonify({'status': 'ok', **res})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@api_bp.route('/semipreparar-stock/<int:docentry>', methods=["POST"])
+@sap_login_required
+def semipreparar_stock(docentry):
+    data = request.get_json(silent=True) or {}
+    target_bin = data.get('target_bin') or data.get('targetBin')
+    lineas_prep = data.get('lineas') or data.get('PreparedLines')
+    return DocsService.semipreparar_stock(docentry=docentry, target_bin=target_bin, lineas_prep=lineas_prep)
+
+@api_bp.route('/finalizar-preparacion/<objtype>/<int:docentry>', methods=["POST"])
+@sap_login_required
+def finalizar_preparacion(objtype, docentry):
+    return DocsService.finalizar_preparacion(objtype=objtype, docentry=docentry)
+
+@api_bp.route('/docs/change-default-bin', methods=["POST"])
+@sap_login_required
+def change_default_bin():
+    try:
+        data = request.get_json() or {}
+        whscode = data.get('whscode')
+        itemcode = data.get('itemcode')
+        new_bin = data.get('new_bin')
+
+        success, msg = DocsService.change_default_bin(whscode=whscode, itemcode=itemcode, new_bin=new_bin)
+        return jsonify({'status': 'ok', 'message': msg})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@api_bp.route('/docs/inventario', methods=["POST"])
+@sap_login_required
+def post_inventario():
+    try:
+        payload = request.get_json()
+        res = DocsService.post_inventario(payload)
+        return jsonify({'status': 'ok', 'data': res})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@api_bp.route('/docs/traslado', methods=["POST"])
+@sap_login_required
+def post_traslado():
+    try:
+        payload = request.get_json()
+        res = DocsService.trasladar_stock(payload)
+        return jsonify({'status': 'ok', 'data': res})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+# ==============================================================================
+# 4. RUTAS DE ALBARANES E IMPRESIÓN PDF (/api/albaranes)
+# ==============================================================================
+
+@api_bp.route('/albaranes', methods=["GET"])
+@sap_login_required
+def list_albaranes():
+    try:
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 20))
+        filters = {
+            'doc': request.args.get('doc', ''),
+            'cliente': request.args.get('cliente', ''),
+            'date_from': request.args.get('date_from', ''),
+            'date_to': request.args.get('date_to', '')
+        }
+        res = AlbaranService.list_albaranes(page=page, per_page=per_page, filters=filters)
+        return jsonify({'status': 'ok', **res})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@api_bp.route('/albaranes/<int:docentry>', methods=["GET"])
+@sap_login_required
+def get_albaran_detalle(docentry):
+    try:
+        albaran = AlbaranService.get_albaran_detalle(docentry)
+        return jsonify({'status': 'ok', 'albaran': albaran})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 404
+
+@api_bp.route('/albaranes/<int:docentry>/pdf', methods=["GET"])
+@sap_login_required
+def get_albaran_pdf(docentry):
+    try:
+        albaran = AlbaranService.get_albaran_detalle(docentry)
+        pdf_bytes = AlbaranService.generar_pdf_bytes(albaran)
+        response = make_response(pdf_bytes)
+        response.headers['Content-Type'] = 'application/pdf'
+        response.headers['Content-Disposition'] = f'inline; filename="Albaran_{docentry}.pdf"'
+        return response
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@api_bp.route('/albaranes/<int:docentry>/imprimir', methods=["POST"])
+@sap_login_required
+def imprimir_albaran_pdf(docentry):
+    try:
+        data = request.get_json(silent=True) or {}
+        copies = int(data.get('copies', 1))
+        success, msg = AlbaranService.imprimir_albaran(docentry, copies=copies)
+        if success:
+            return jsonify({'status': 'ok', 'message': msg})
+        else:
+            return jsonify({'status': 'error', 'message': msg}), 400
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+# ==============================================================================
+# 5. RUTAS DE IMPRESIÓN ZPL Y ZEBRA (/api/print)
+# ==============================================================================
+
+@api_bp.route('/print/printers', methods=["GET"])
+@sap_login_required
+def get_printers():
+    try:
+        printers = PrintService.get_available_printers()
+        return jsonify({'status': 'ok', 'impresoras': printers})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@api_bp.route('/print/product', methods=["POST"])
+@sap_login_required
+def print_product_label():
+    try:
+        data = request.get_json() or {}
+        product_id = data.get('product_id')
+        product_name = data.get('product_name')
+        printer_id = data.get('printer_id')
+        copies = data.get('copies', 1)
+        serial_number = data.get('serial_number')
+
+        success, msg = PrintService.print_product(
+            product_id=product_id,
+            product_name=product_name,
+            printer_id=printer_id,
+            copies=copies,
+            serial_number=serial_number
+        )
+        return jsonify({'status': 'ok', 'message': msg})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@api_bp.route('/print/bin', methods=["POST"])
+@sap_login_required
+def print_bin_label():
+    try:
+        data = request.get_json() or {}
+        bin_code = data.get('bin')
+        printer_id = data.get('printer_id')
+        copies = data.get('copies', 1)
+
+        success, msg = PrintService.print_bin(
+            bin_code=bin_code,
+            printer_id=printer_id,
+            copies=copies
+        )
+        return jsonify({'status': 'ok', 'message': msg})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@api_bp.route('/print/bultos', methods=["POST"])
+@sap_login_required
+def print_bultos_label():
+    try:
+        data = request.get_json() or {}
+        entry_pedido = data.get('entryPedido') or data.get('docentry')
+        bultos = data.get('numBultos', 1)
+        printer_id = data.get('printer_id', '')
+
+        success, msg = PrintService.print_bultos(
+            entry_pedido=entry_pedido,
+            bultos=bultos,
+            printer_id=printer_id
+        )
+        return jsonify({'status': 'ok', 'message': msg})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+# ==============================================================================
+# 6. RUTAS DE BÚSQUEDA Y AUTOCOMPLETADO (/api/search)
+# ==============================================================================
+
+@api_bp.route('/search/bins', methods=["GET"])
+@sap_login_required
+def search_bins():
+    try:
+        term = request.args.get('term', '')
+        bins = SearchService.search_bins(term)
+        return jsonify({'status': 'ok', 'results': bins})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@api_bp.route('/search/items', methods=["GET"])
+@sap_login_required
+def search_items():
+    try:
+        term = request.args.get('term', '')
+        items = SearchService.search_items(term)
+        return jsonify({'status': 'ok', 'results': items})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500

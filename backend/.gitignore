@@ -1,0 +1,11 @@
+# Entorno de ejecución y variables secretas
+.env
+flask_session/
+logs/
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtualenv
+venv/
+.venv/

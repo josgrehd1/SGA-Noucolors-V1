@@ -154,6 +154,25 @@ class StockService:
             data['Ubicaciones'] = sorted(unique_ubis, key=lambda x: str(x.get('BinCode', '')))
             data['ItemsGroupCode'] = data.get('ItemGroups', {}).get('GroupName', '')
 
+            # CÁLCULO DE TOTALES DE NECESIDADES (ATP Y COMPRAS)
+            whs_coll = data.get('ItemWarehouseInfoCollection', []) or []
+            stock_top = data.get('QuantityOnStock')
+            committed_top = data.get('QuantityOrderedByCustomers')
+            ordered_top = data.get('QuantityOrderedFromVendors')
+
+            total_stock = float(stock_top) if stock_top is not None else sum(float(w.get('InStock') or 0) for w in whs_coll)
+            total_committed = float(committed_top) if committed_top is not None else sum(float(w.get('Committed') or 0) for w in whs_coll)
+            total_ordered = float(ordered_top) if ordered_top is not None else sum(float(w.get('Ordered') or 0) for w in whs_coll)
+
+            atp_neto = total_stock - total_committed + total_ordered
+            necesidad_compra = (total_committed - (total_stock + total_ordered)) if (total_stock + total_ordered) < total_committed else 0.0
+
+            data['TotalInStock'] = total_stock
+            data['TotalCommitted'] = total_committed
+            data['TotalOrdered'] = total_ordered
+            data['ATPNeto'] = atp_neto
+            data['NecesidadCompra'] = necesidad_compra
+
         total_count = total_override if total_override is not None else result.get('count', len(items_data))
         total_pages = (total_count + per_page - 1) // per_page if per_page else 1
 
@@ -163,6 +182,165 @@ class StockService:
             'total_pages': total_pages,
             'page': page
         }
+
+    @staticmethod
+    def ubicacion_existe(ubicacion, itemcode=None, min_qty=0):
+        if not ubicacion:
+            return {
+                "existe": False,
+                "stock_suficiente": False,
+                "stock_disponible": 0,
+                "message": "La ubicación no puede estar vacía"
+            }
+        
+        info = SapRepository.get_data(resource="BinLocations", selection=["BinCode"], filter={"BinCode": ubicacion})
+        datos = info.get('data', []) if info and info.get('status') == 'ok' else []
+        existe = bool(datos)
+
+        if not existe:
+            return {
+                "existe": False,
+                "stock_suficiente": False,
+                "stock_disponible": 0,
+                "message": f"La ubicación {ubicacion} no existe"
+            }
+
+        stock_disponible = None
+        stock_suficiente = True
+        mensaje = "Ubicación válida"
+
+        if itemcode:
+            info_stock = SapRepository.get_data_from_view(
+                view_name="NC_STOCK_UBICACION_B1SLQuery",
+                filter={"BinCode": ubicacion, "ItemCode": itemcode},
+                all_results=True
+            )
+            datos_stock = info_stock.get('data', []) if info_stock and info_stock.get('status') == 'ok' else []
+            stock_disponible = sum(float(x.get('BINQTY', 0) or 0) for x in datos_stock) if datos_stock else 0.0
+
+            min_qty_val = float(min_qty or 0)
+            if min_qty_val > 0:
+                stock_suficiente = stock_disponible >= min_qty_val
+            else:
+                stock_suficiente = stock_disponible > 0
+
+            if not stock_suficiente:
+                cant_fmt = int(stock_disponible) if stock_disponible.is_integer() else stock_disponible
+                mensaje = f"Stock insuficiente en {ubicacion} (Disponible: {cant_fmt} u.)"
+
+        return {
+            "existe": True,
+            "stock_suficiente": stock_suficiente,
+            "stock_disponible": stock_disponible,
+            "message": mensaje
+        }
+
+    @staticmethod
+    def producto_existe(producto, producto_esperado=None):
+        if not producto:
+            return {"existe": False, "productos": []}
+        
+        sl_filter = {"multipleExact": {"ItemCode": producto, "BarCode": producto, "U_Tipoproducto": producto}}
+        if producto_esperado:
+            sl_filter['ItemCode'] = producto_esperado
+
+        info = SapRepository.get_data(resource="Items", selection=["ItemCode", "ItemName"], filter=sl_filter)
+        datos = info.get('data', []) if info and info.get('status') == 'ok' else []
+        return {"existe": bool(datos), "productos": datos}
+
+    @staticmethod
+    def serie_existe(producto, serie, ubicacion=None):
+        if not producto or not serie:
+            return False
+        
+        sap_filter = {
+            "ItemCode": str(producto).strip(), 
+            "DistNumber": str(serie).strip()
+        }
+        if ubicacion:
+            sap_filter["BinCode"] = str(ubicacion).strip()
+
+        info = SapRepository.get_data_from_view(view_name="NC_STOCK_UBICACION_B1SLQuery", filter=sap_filter, all_results=True)
+        if info.get('status') == 'ok' and info.get('data'):
+            return True
+
+        fallback_info = SapRepository.get_data(
+            resource="SerialNumberDetails", 
+            selection=["ItemCode"], 
+            filter={"ItemCode": str(producto).strip(), "InternalSerialNumber": str(serie).strip()}
+        )
+        if fallback_info.get('status') == 'ok' and fallback_info.get('data'):
+            return True
+
+        return False
+
+    @staticmethod
+    def get_stock_info_producto(producto):
+        if not producto:
+            return []
+        info = SapRepository.get_data_from_view(view_name="NC_STOCK_UBICACION_B1SLQuery", filter={"ItemCode": producto}, all_results=True)
+        return info.get('data', []) if info and info.get('status') == 'ok' else []
+
+    @staticmethod
+    def get_stock_info_ubicacion(ubicacion):
+        if not ubicacion:
+            return []
+        info = SapRepository.get_data_from_view(view_name="NC_STOCK_UBICACION_B1SLQuery", filter={"BinCode": ubicacion}, all_results=True, orderby="ItemCode", order_direction="asc")
+        return info.get('data', []) if info and info.get('status') == 'ok' else []
+
+    @staticmethod
+    def get_stock_etiquetas(page=1, per_page=20, filters=None):
+        filters = filters or {}
+        sap_filter = {}
+        if filters.get('itemcode'):
+            sap_filter["ItemCode__contains"] = str.upper(filters['itemcode'].strip())
+        if filters.get('bin'):
+            sap_filter["BinCode__contains"] = str.upper(filters['bin'].strip())
+        
+        result = SapRepository.get_data_from_view(view_name="NC_STOCK_UBICACION_B1SLQuery", filter=sap_filter, all_results=True)
+        if result.get('status') != 'ok':
+            raise Exception(f"SAP query failed: {result.get('message')}")
+        
+        total_count = result.get('count', len(result.get('data', [])))
+        total_pages = (total_count + per_page - 1) // per_page if per_page else 1
+        
+        return {
+            'stock': result.get('data', []),
+            'total_count': total_count,
+            'total_pages': total_pages,
+            'page': page
+        }
+
+    @staticmethod
+    def get_product_price(item_id):
+        info = SapRepository.get_data(resource="Items", selection=["ItemPrices"], filter={"ItemCode": item_id})
+        if not item_id or not info or 'data' not in info:
+            return 0
+        datos = info.get('data', [])
+        if isinstance(datos, list) and len(datos) > 0:
+            tarifas = datos[0].get("ItemPrices", [])
+            for t in tarifas:
+                if t.get("PriceList") == 28:
+                    return t.get('Price', 0)
+        return 0
+
+    @staticmethod
+    def get_stock_disponible(productos):
+        if not productos:
+            return {}
+        info = SapRepository.get_data(resource="Items", selection=["ItemCode", "ItemWarehouseInfoCollection"], filter={"ItemCode__in": productos})
+        if not info or 'data' not in info:
+            return {}
+        datos = info.get('data', [])
+        stock_info = {}
+        if isinstance(datos, list):
+            for x in datos:
+                almacenes = x.get("ItemWarehouseInfoCollection", [])
+                almacenes_validos = [a for a in almacenes if a.get("InStock") is not None and a.get("Committed") is not None]
+                if almacenes_validos:
+                    disponible = sum([alm['InStock'] - alm["Committed"] for alm in almacenes_validos])
+                    stock_info[x.get("ItemCode")] = disponible
+        return stock_info
 
     @staticmethod
     def get_id_ubicaciones(lista_ubicaciones):

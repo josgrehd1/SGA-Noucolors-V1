@@ -138,10 +138,20 @@ def semipreparar_stock(docentry):
     lineas_prep = data.get('lineas') or data.get('PreparedLines')
     return DocsService.semipreparar_stock(docentry=docentry, target_bin=target_bin, lineas_prep=lineas_prep)
 
+@api_bp.route('/docs/preparadas/<int:docentry>', methods=["GET"])
+@sap_login_required
+def get_lineas_preparadas(docentry):
+    try:
+        lineas = DocsService.get_lineas_preparadas(docentry)
+        return jsonify({'status': 'ok', 'lineas': lineas, 'count': len(lineas)})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @api_bp.route('/finalizar-preparacion/<objtype>/<int:docentry>', methods=["POST"])
 @sap_login_required
 def finalizar_preparacion(objtype, docentry):
-    return DocsService.finalizar_preparacion(objtype=objtype, docentry=docentry)
+    parcial = request.args.get('parcial', 'false').lower() == 'true'
+    return DocsService.finalizar_preparacion(objtype=objtype, docentry=docentry, parcial=parcial)
 
 @api_bp.route('/docs/change-default-bin', methods=["POST"])
 @sap_login_required
@@ -176,6 +186,104 @@ def post_traslado():
         return jsonify({'status': 'ok', 'data': res})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+# ==============================================================================
+# 3.1 VALIDACIONES DE ESCANEO Y OPERACIONES DE PREPARACIÓN
+# ==============================================================================
+
+@api_bp.route('/ubicacion-existe/<ubicacion>', methods=["GET"])
+@sap_login_required
+def existe_ubicacion(ubicacion):
+    itemcode = request.args.get('itemcode', '')
+    qty = request.args.get('qty', request.args.get('min_qty', 0), type=float)
+    info = StockService.ubicacion_existe(ubicacion, itemcode=itemcode, min_qty=qty)
+    return jsonify(info)
+
+@api_bp.route('/producto-existe', methods=["GET"])
+@sap_login_required
+def existe_producto():
+    prod_search = request.args.get('prod-search', '')
+    prod_expect = request.args.get('prod-expect', '')
+    info = StockService.producto_existe(prod_search, prod_expect)
+    return jsonify(info)
+
+@api_bp.route('/serie-existe', methods=["GET"])
+@sap_login_required
+def existe_serie():
+    itemcode = request.args.get('itemcode', '')
+    serie = request.args.get('serie', '')
+    bin_code = request.args.get('bin', '')
+    info = StockService.serie_existe(itemcode, serie, ubicacion=bin_code)
+    return jsonify({"existe": info})
+
+@api_bp.route('/get-product-stock-info/<producto>', methods=["GET"])
+@sap_login_required
+def get_stock_info_prod(producto):
+    info = StockService.get_stock_info_producto(producto)
+    return jsonify({"success": True, "datos": info})
+
+@api_bp.route('/get-bin-stock-info/<ubicacion>', methods=["GET"])
+@sap_login_required
+def get_stock_info_ubi(ubicacion):
+    info = StockService.get_stock_info_ubicacion(ubicacion)
+    return jsonify({"datos": info})
+
+@api_bp.route('/get-available-stock/<productos>', methods=["GET"])
+@sap_login_required
+def get_available_stock(productos):
+    prod_list = [p.strip() for p in productos.split(',') if p.strip()]
+    info = StockService.get_stock_disponible(prod_list)
+    return jsonify({"Stock": info})
+
+@api_bp.route('/get-product-price/<item_id>', methods=["GET"])
+@sap_login_required
+def get_product_price(item_id):
+    info = StockService.get_product_price(item_id)
+    return jsonify({"Price": info})
+
+@api_bp.route('/confirmar-mov-stock', methods=["POST"])
+@sap_login_required
+def confirmar_mov_stock():
+    try:
+        data = request.get_json() or {}
+        success, msg = DocsService.confirmar_mov_stock(data)
+        return jsonify({"status": "ok", "message": msg})
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@api_bp.route('/borrar-preparacion-stock', methods=["POST"])
+@sap_login_required
+def borrar_prep_stock():
+    try:
+        data = request.get_json() or {}
+        success, msg = DocsService.borrar_preparacion_stock(data)
+        return jsonify({"status": "ok", "message": msg})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@api_bp.route('/activar-pedido', methods=["POST"])
+@sap_login_required
+def activar_pedido():
+    try:
+        data = request.get_json() or {}
+        docentry = data.get('docentry')
+        success, msg = DocsService.activar_pedido(docentry)
+        return jsonify({"status": "ok", "message": msg})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@api_bp.route('/desactivar-pedido', methods=["POST"])
+@sap_login_required
+def desactivar_pedido():
+    try:
+        data = request.get_json() or {}
+        docentry = data.get('docentry')
+        success, msg = DocsService.desactivar_pedido(docentry)
+        return jsonify({"status": "ok", "message": msg})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 # ==============================================================================
 # 4. RUTAS DE ALBARANES E IMPRESIÓN PDF (/api/albaranes)
@@ -326,5 +434,27 @@ def search_items():
         term = request.args.get('term', '')
         items = SearchService.search_items(term)
         return jsonify({'status': 'ok', 'results': items})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@api_bp.route('/search/customers', methods=["GET"])
+@sap_login_required
+def search_customers():
+    try:
+        term = request.args.get('term', '')
+        customers = SearchService.search_customers(term)
+        return jsonify({'status': 'ok', 'results': customers})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@api_bp.route('/search/docnums', methods=["GET"])
+@sap_login_required
+def search_docnums():
+    try:
+        term = request.args.get('term', '')
+        objtype = request.args.get('objtype', '17')
+        ver_inactivos = request.args.get('ver_inactivos', 'false').lower() == 'true'
+        docnums = SearchService.search_docnums(term, objtype=objtype, ver_inactivos=ver_inactivos)
+        return jsonify({'status': 'ok', 'results': docnums})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500

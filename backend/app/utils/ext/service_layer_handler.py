@@ -7,16 +7,79 @@ class ServiceLayerHandler:
     def __init__(self):
         self.url_base = None
         self.company = None
+        # Diccionario de sesiones máster por empresa: { company_db: session_id }
+        self._master_sessions = {}
 
     def init_app(self, app):
         self.url_base = app.config.get('SAP_SL_URL', 'https://192.168.1.156:50000/b1s/v2/')
-        self.company = app.config.get('COMPANY_DB', 'NOUCOLORS')
         self.server = app.config.get('SAP_SERVER', '192.168.1.156')
         self.port = app.config.get('SAP_PORT', 50000)
 
+    def ensure_master_session(self, company_db=None):
+        """
+        Garantiza una sesión máster activa de Service Layer usando las credenciales del Usuario Técnico.
+        Cachea la sesión por empresa (company_db) para soportar múltiples bases de datos SAP.
+        No consume licencias nominativas adicionales de usuario SAP.
+        """
+        import logging
+        log = logging.getLogger(__name__)
+
+        url_base = self.url_base or (current_app.config.get('SAP_SL_URL') if current_app else 'https://192.168.1.156:50000/b1s/v2/')
+
+        # Determinar la empresa destino: estrictamente parámetro company_db o sesión del usuario
+        db = company_db or (session.get('company_db') if session else None)
+        if not db:
+            raise ValueError("No se ha seleccionado ninguna base de datos SAP en la sesión. Seleccione una empresa al iniciar sesión.")
+
+        master_user = current_app.config.get('SAP_MASTER_USER', 'manager') if current_app else 'manager'
+        master_pass = current_app.config.get('SAP_MASTER_PASSWORD', '') if current_app else ''
+
+        log.info(f"[MasterSession] Empresa: {db} | Usuario máster: {master_user}")
+
+        # Verificar si ya hay sesión cacheada para esta empresa
+        cached_session = self._master_sessions.get(db)
+        if cached_session:
+            ping_url = f"{url_base.rstrip('/')}/CompanyService_GetAdminInfo"
+            try:
+                res = requests.post(ping_url, cookies={"B1SESSION": cached_session}, verify=False, timeout=5)
+                if res.status_code == 200:
+                    log.info(f"[MasterSession] Sesión cacheada válida para {db}")
+                    return cached_session
+                else:
+                    log.warning(f"[MasterSession] Sesión cacheada expirada para {db}, renovando...")
+                    del self._master_sessions[db]
+            except Exception as e:
+                log.warning(f"[MasterSession] Error al verificar sesión cacheada: {e}")
+                del self._master_sessions[db]
+
+        # Crear nueva sesión máster para esta empresa
+        url = f"{url_base.rstrip('/')}/Login"
+        payload = {
+            "CompanyDB": db,
+            "UserName": master_user,
+            "Password": master_pass
+        }
+        log.info(f"[MasterSession] Intentando login en {url} con DB={db}, User={master_user}")
+        try:
+            res = requests.post(url, json=payload, verify=False, timeout=10)
+            if res.status_code == 200:
+                data = res.json()
+                new_session = data.get('SessionId')
+                self._master_sessions[db] = new_session
+                log.info(f"[MasterSession] ✅ Sesión máster creada para {db}: {new_session[:8]}...")
+                return new_session
+            else:
+                log.error(f"[MasterSession] ❌ Login falló para {db} - Status {res.status_code}: {res.text[:200]}")
+                return None
+        except Exception as e:
+            log.error(f"[MasterSession] ❌ Excepción al conectar con Service Layer: {e}")
+            return None
+
     def login(self, username, password, company_db=None):
         url_base = self.url_base or (current_app.config.get('SAP_SL_URL') if current_app else 'https://192.168.1.156:50000/b1s/v2/')
-        db = company_db or (session.get('company_db') if session else None) or (current_app.config.get('COMPANY_DB') if current_app else 'NOUCOLORS')
+        db = company_db or (session.get('company_db') if session else None)
+        if not db:
+            raise ValueError("No se ha especificado ninguna base de datos SAP para la autenticación.")
         url = f"{url_base.rstrip('/')}/Login"
         payload = {
             "CompanyDB": db,
@@ -59,8 +122,8 @@ class ServiceLayerHandler:
                 pass
 
     def _execute_request(self, method, url, payload=None, params=None, replace_collection=False, master_session=None):
-        """Método interno para centralizar peticiones con re-logueo automático."""
-        sap_cookie = master_session if master_session else (session.get('sap_session') if session else None)
+        """Método interno para centralizar peticiones con re-logueo automático y sesión máster."""
+        sap_cookie = master_session if master_session else (session.get('sap_session') if session else None) or self.ensure_master_session()
 
         headers = {
             "Content-Type": "application/json",
@@ -84,16 +147,23 @@ class ServiceLayerHandler:
         res = requests.request(method, **kwargs)
 
         if res.status_code == 401 or (res.status_code not in (200, 201, 204) and "301" in res.text):
-            user = (session.get('sap_user') or session.get('sap_username')) if session else None
-            password = session.get('sap_password') if session else None
-            
-            if user and password:
-                company_db = (session.get('company_db') if session else None) or self.company
-                login_res = self.login(user, password, company_db=company_db)
+            master_token = self.ensure_master_session()
+            if master_token:
+                kwargs["cookies"] = {"B1SESSION": master_token}
+                if session:
+                    session['sap_session'] = master_token
+                res = requests.request(method, **kwargs)
+            else:
+                user = (session.get('sap_user') or session.get('sap_username')) if session else None
+                password = session.get('sap_password') if session else None
                 
-                if login_res.get("status") == "ok":
-                    kwargs["cookies"] = {"B1SESSION": session.get('sap_session')}
-                    res = requests.request(method, **kwargs)
+                if user and password:
+                    company_db = (session.get('company_db') if session else None) or self.company
+                    login_res = self.login(user, password, company_db=company_db)
+                    
+                    if login_res.get("status") == "ok":
+                        kwargs["cookies"] = {"B1SESSION": session.get('sap_session')}
+                        res = requests.request(method, **kwargs)
         
         return res
 
@@ -101,10 +171,10 @@ class ServiceLayerHandler:
         url = f"{self.url_base}/{resource}"
         return self._execute_request('POST', url, payload=payload, master_session=master_session)
     
-    def update(self, resource, payload, id, replace_collection=False):
-        id = f"'{id}'" if type(id) == str else id
-        url = f"{self.url_base}/{resource}({id})"
-        return self._execute_request('PATCH', url, payload=payload, replace_collection=replace_collection)
+    def update(self, resource, id, payload, replace_collection=False, master_session=None):
+        id_str = f"'{id}'" if isinstance(id, str) else id
+        url = f"{self.url_base}/{resource}({id_str})"
+        return self._execute_request('PATCH', url, payload=payload, replace_collection=replace_collection, master_session=master_session)
     
     def close_document(self, resource, id):
         id = f"'{id}'" if type(id) == str else id

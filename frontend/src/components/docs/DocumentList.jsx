@@ -6,6 +6,7 @@ import {
   UserOutlined,
   ShopOutlined,
   CommentOutlined,
+  InfoCircleOutlined,
   RightOutlined,
   UnorderedListOutlined,
   StopOutlined
@@ -74,20 +75,36 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
               }}
             >
               <div>
-                {/* 1. Fila de Encabezado: Nº Doc | Almacén | Fecha */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <Tag
-                    color="blue"
-                    style={{
-                      fontWeight: 800,
-                      fontFamily: 'monospace',
-                      fontSize: '0.88rem',
-                      padding: '3px 10px',
-                      borderRadius: 6
-                    }}
-                  >
-                    <FileTextOutlined style={{ marginRight: 4 }} /> #{doc.DOCNUM || doc.DOCENTRY}
-                  </Tag>
+                {/* 1. Fila de Encabezado: Nº Doc | Badge Estado | Almacén | Fecha */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Tag
+                      color="blue"
+                      style={{
+                        fontWeight: 800,
+                        fontFamily: 'monospace',
+                        fontSize: '0.88rem',
+                        padding: '3px 10px',
+                        borderRadius: 6
+                      }}
+                    >
+                      <FileTextOutlined style={{ marginRight: 4 }} /> #{doc.DOCNUM || doc.DOCENTRY}
+                    </Tag>
+
+                    {gestionadas > 0 && (
+                      <Tag
+                        color={gestionadas === totalLineas ? 'success' : 'warning'}
+                        style={{
+                          fontWeight: 700,
+                          fontSize: '0.78rem',
+                          borderRadius: 6,
+                          padding: '2px 8px'
+                        }}
+                      >
+                        {gestionadas === totalLineas ? '🟢 Preparado' : `🟠 En Preparación (${gestionadas}/${totalLineas})`}
+                      </Tag>
+                    )}
+                  </div>
 
                   <Space size={6}>
                     <Tag style={{ borderRadius: 6, fontSize: '0.78rem', fontFamily: 'monospace' }}>
@@ -161,7 +178,28 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
                   </div>
                 </div>
 
-                {/* 3. Comentarios del Pedido (si existen) */}
+                {/* 3. Línea de Texto Especial del Pedido (si existe) */}
+                {doc.PRIMERA_LINEA_TEXTO && (
+                  <div
+                    style={{
+                      backgroundColor: '#e6f7ff',
+                      border: '1px solid #91caff',
+                      borderRadius: 8,
+                      padding: '6px 10px',
+                      marginBottom: 8,
+                      fontSize: '0.8rem',
+                      color: '#0958d9',
+                      fontWeight: 600
+                    }}
+                    className="text-truncate"
+                    title={doc.PRIMERA_LINEA_TEXTO}
+                  >
+                    <InfoCircleOutlined style={{ marginRight: 6, color: '#1677ff' }} />
+                    {doc.PRIMERA_LINEA_TEXTO}
+                  </div>
+                )}
+
+                {/* 4. Comentarios del Pedido (si existen) */}
                 {doc.COMMENTS && (
                   <div
                     style={{

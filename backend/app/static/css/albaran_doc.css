@@ -1,12 +1,15 @@
+/* ==========================================================================
+   1. VARIABLES Y CONFIGURACIÓN DE PÁGINA (A4 IMPRESIÓN / PDF)
+   ========================================================================== */
 :root {
-    --nou-colors-blue: #232634;
+    --nou-colors-blue: #232634;       /* Tono profundo del logo Nou Colors */
     --nou-colors-light-gray: #f5f5f5;
     --nou-colors-border-gray: #ddd;
 }
 
 @page {
     size: A4;
-    margin: 5cm 1.5cm 4cm 1.5cm;
+    margin: 6cm 1.75cm 7.5cm 1.5cm; /* Márgenes para dar espacio al contenido central y running content */
 
     @top-center {
         content: element(header_repeat);
@@ -16,9 +19,11 @@
     }
 }
 
+/* Elementos repetidos en cabecera y pie de página (Librerías PDF como Weasyprint) */
 #header-running {
     position: running(header_repeat);
-    width: 100%;
+    width: 19cm !important; /* Fuerza el ancho útil total del A4 con márgenes */
+    table-layout: fixed;    /* Evita que las celdas deformen la tabla */
 }
 
 .bottom-container {
@@ -26,6 +31,9 @@
     width: 100%;
 }
 
+/* ==========================================================================
+   2. ESTILOS BASE Y GENERALES
+   ========================================================================== */
 body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
     color: #333;
@@ -33,9 +41,14 @@ body {
     line-height: 1.5;
 }
 
+/* Control global de saltos de página en tablas */
 table {
-    border-collapse: collapse;
+    border-collapse: collapse; /* Aplicado globalmente para evitar repetirlo en cada tabla */
     page-break-inside: auto;
+}
+
+thead {
+    display: table-header-group;
 }
 
 tr {
@@ -43,6 +56,7 @@ tr {
     page-break-after: auto;
 }
 
+/* Secciones de texto descriptivas */
 .section-title {
     font-size: 11px;
     font-weight: bold;
@@ -65,6 +79,9 @@ tr {
     margin-bottom: 2px;
 }
 
+/* ==========================================================================
+   3. BLOQUE DE CABECERA / INFORMACIÓN DE COMPAÑÍA
+   ========================================================================== */
 .header-table,
 .info-table {
     width: 100%;
@@ -72,7 +89,7 @@ tr {
 }
 
 .logo {
-    width: 200px;
+    width: 220px;
 }
 
 .company-info {
@@ -80,4 +97,144 @@ tr {
     font-size: 9px;
     color: #555;
     line-height: 1.4;
+}
+
+/* ==========================================================================
+   4. TABLAS DE ARTÍCULOS Y TOTALES
+   ========================================================================== */
+/* Tabla genérica de artículos (.table) */
+.table td,
+.table th {
+    padding: 6px 8px !important;
+    vertical-align: middle !important;
+}
+
+.table th {
+    background-color: var(--nou-colors-blue) !important;
+    color: white !important;
+    font-size: 10px;
+}
+
+/* Tabla de totales */
+.totals-table {
+    width: 100%;
+    margin-bottom: 12px;
+}
+
+.totals-table th {
+    background-color: var(--nou-colors-blue);
+    color: white;
+    padding: 6px;
+    text-align: center;
+    font-size: 10px;
+    text-transform: uppercase;
+}
+
+.totals-table td {
+    background-color: var(--nou-colors-light-gray);
+    border: 1px solid var(--nou-colors-border-gray); /* Usamos la variable gris de borde */
+    padding: 8px;
+    text-align: center;
+    font-weight: bold;
+    font-size: 11px;
+}
+
+/* ==========================================================================
+   5. TABLAS PARALELAS (RENTING Y MANTENIMIENTO)
+   ========================================================================== */
+.contenedor-tablas {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-top: 20px;
+    width: 100%;
+    page-break-inside: avoid;
+}
+
+/* Estilo unificado para ambas tablas */
+.tabla-renting,
+.tabla-mnto {
+    font-size: 11px;
+    page-break-inside: avoid;
+    width: 100%; /* Ocupan el 100% del contenedor padre (el bloque de 39% o 59% que pusimos en el HTML) */
+}
+
+.tabla-renting th,
+.tabla-mnto th {
+    background-color: var(--nou-colors-blue);
+    color: white;
+    padding: 6px;
+    text-align: center;
+    font-weight: bold;
+    border: 1px solid var(--nou-colors-blue);
+    border-right: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.tabla-renting th:last-child,
+.tabla-mnto th:last-child {
+    border-right: 1px solid var(--nou-colors-blue);
+}
+
+.tabla-renting td,
+.tabla-mnto td {
+    border: 1px solid var(--nou-colors-blue);
+    padding: 6px;
+    text-align: center;
+}
+
+.tabla-renting tr:nth-child(even),
+.tabla-mnto tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+/* ==========================================================================
+   6. FIRMAS Y SELLOS / PIE DE PÁGINA LEGAL
+   ========================================================================== */
+/* Tu contenedor padre (el que tenía el display: table) */
+.signature-section {
+    /* ¡ELIMINADO display: table! Dejamos que Bootstrap controle el flujo */
+    margin-bottom: 10px;
+    /* Si quieres un ancho por defecto para cuando no uses clases, usa max-width, nunca width */
+}
+
+.box-title {
+    background-color: var(--nou-colors-blue);
+    color: white;
+    text-align: center;
+    padding: 4px;
+    font-weight: bold;
+    font-size: 9px;
+    /* ¡ELIMINADO width: 200px! Ahora se adaptará a la columna o flex padre */
+}
+
+.box {
+    border: 1pt solid var(--nou-colors-blue);
+    border-top: none;
+    background-color: white;
+    color: #bbb;
+    font-size: 9px;
+    text-align: center;
+    padding: 5px;
+    /* ¡ELIMINADOS height: 55px y width: 200px! */
+    /* De esta forma, las cajas crecerán y se estirarán juntas perfectamente */
+}
+
+.legal-footer {
+    text-align: center;
+    font-size: 8px;
+    color: #777;
+    border-top: 1pt solid #eee;
+    padding-top: 5px;
+    margin-top: 5px;
+}
+
+.page-number {
+    text-align: center;
+    font-size: 9px;
+    color: #555;
+    margin-top: 4px;
+}
+
+.page-number::before {
+    content: "Página " counter(page) " / " counter(pages);
 }

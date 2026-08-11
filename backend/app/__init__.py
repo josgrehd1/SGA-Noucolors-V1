@@ -25,6 +25,27 @@ def create_app():
     # Configuración de Sesión
     Session(app)
 
+    # Filtros Jinja2 para Documentos y Albaranes PDF
+    from datetime import datetime
+
+    @app.template_filter('format_date')
+    def format_date(value):
+        if not value:
+            return ""
+        try:
+            date_str = str(value).split('T')[0]
+            date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+            return date_obj.strftime('%d/%m/%Y')
+        except (ValueError, TypeError, IndexError):
+            return value
+
+    @app.template_filter('format_currency')
+    def format_currency(value):
+        try:
+            return "{:,.2f}".format(float(value)).replace(",", "X").replace(".", ",").replace("X", ".")
+        except (ValueError, TypeError):
+            return value
+
     # Logging
     log_dir = os.path.join(app.root_path, 'logs')
     if not os.path.exists(log_dir):

@@ -123,6 +123,12 @@ class PrintService:
         if info.get('status') != 'ok' or not info.get('data'):
             raise Exception(f"No se encontró información del pedido #{entry_pedido} en SAP")
 
+        # Actualizar el número de bultos en SAP (U_MAC_ObsVSTOCK)
+        try:
+            SapRepository.update(resource="Orders", id=int(entry_pedido), payload={"U_MAC_ObsVSTOCK": bultos_num})
+        except Exception as e:
+            current_app.logger.warning(f"No se pudo actualizar U_MAC_ObsVSTOCK en SAP: {e}")
+
         pedido_info = info['data'][0]
         cliente = pedido_info.get('CardName', '')
         clave_dir = pedido_info.get('ShipToCode', '')

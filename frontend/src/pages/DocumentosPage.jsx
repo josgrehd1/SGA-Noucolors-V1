@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Typography, Pagination, Row, Col, Input, Select, Button, message } from 'antd';
+import { Typography, Pagination, Row, Col, Input, Select, AutoComplete, Button, message } from 'antd';
 import { SearchOutlined, ClearOutlined } from '@ant-design/icons';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
@@ -22,10 +22,17 @@ const TIPOS_VENTA_OPTIONS = [
   { label: 'Otros', value: 'Otros' }
 ];
 
+const ESTADO_PREPARACION_OPTIONS = [
+  { label: 'Todos los estados', value: '' },
+  { label: '🟠 En Preparación / Semi-preparados', value: 'en_preparacion' },
+  { label: '⚪ Sin Iniciar', value: 'sin_iniciar' }
+];
+
 const DocFilterSchema = Yup.object().shape({
   cliente: Yup.string().trim(),
   search_docnum: Yup.string().trim(),
-  tipo_venta: Yup.string().trim()
+  tipo_venta: Yup.string().trim(),
+  estado_preparacion: Yup.string().trim()
 });
 
 export const DocumentosPage = () => {
@@ -38,6 +45,10 @@ export const DocumentosPage = () => {
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
+  // Estados de Autocompletado / Sugerencias en vivo
+  const [customerOptions, setCustomerOptions] = useState([]);
+  const [docnumOptions, setDocnumOptions] = useState([]);
+
   const [selectedDetailDoc, setSelectedDetailDoc] = useState(null);
   const [selectedSemiPrepareDoc, setSelectedSemiPrepareDoc] = useState(null);
 
@@ -45,13 +56,81 @@ export const DocumentosPage = () => {
     initialValues: {
       cliente: '',
       search_docnum: '',
-      tipo_venta: ''
+      tipo_venta: '',
+      estado_preparacion: ''
     },
     validationSchema: DocFilterSchema,
     onSubmit: (values) => {
       fetchDocuments(objType, 1, values);
     }
   });
+
+  const handleSearchCustomer = async (searchText = '') => {
+    const term = (searchText || '').trim().toLowerCase();
+    
+    // Sugerencias de clientes desde los documentos cargados actualmente
+    const localMatches = Array.from(
+      new Set(
+        documents
+          .map((d) => d.CARDNAME)
+          .filter(Boolean)
+      )
+    )
+      .filter((name) => !term || name.toLowerCase().includes(term))
+      .slice(0, 15)
+      .map((name) => ({ value: name, label: name }));
+
+    try {
+      const res = await client.get('/search/customers', { params: { term } });
+      if (res.status === 'ok' && Array.isArray(res.results) && res.results.length > 0) {
+        setCustomerOptions(res.results);
+        return;
+      }
+    } catch (e) {
+      console.error('Error buscando clientes:', e);
+    }
+
+    setCustomerOptions(localMatches);
+  };
+
+  const handleSearchDocnum = async (searchText = '') => {
+    const term = (searchText || '').replace('#', '').trim().toLowerCase();
+
+    // Sugerencias ÚNICAMENTE de los documentos SGA activos cargados actualmente
+    const localMatches = documents
+      .filter((d) => {
+        const numStr = String(d.DOCNUM || d.DOCENTRY || '').toLowerCase();
+        return !term || numStr.includes(term);
+      })
+      .slice(0, 15)
+      .map((d) => {
+        const num = String(d.DOCNUM || d.DOCENTRY);
+        return {
+          value: num,
+          label: `#${num} - ${d.CARDNAME || 'Cliente'}`
+        };
+      });
+
+    try {
+      const isInactive = location.state?.verInactivos ? 'true' : 'false';
+      const res = await client.get('/search/docnums', {
+        params: { term, objtype: objType, ver_inactivos: isInactive }
+      });
+      if (res.status === 'ok' && Array.isArray(res.results) && res.results.length > 0) {
+        setDocnumOptions(res.results);
+        return;
+      }
+    } catch (e) {
+      console.error('Error buscando números de documento SGA:', e);
+    }
+
+    setDocnumOptions(localMatches);
+  };
+
+  useEffect(() => {
+    handleSearchCustomer(filterFormik.values.cliente);
+    handleSearchDocnum(filterFormik.values.search_docnum);
+  }, [objType, documents]);
 
   useEffect(() => {
     if (location.state?.objType) {
@@ -83,7 +162,7 @@ export const DocumentosPage = () => {
     try {
       const params = {
         page: targetPage,
-        per_page: 20,
+        per_page: 50,
         cliente: currentFilters.cliente,
         docnum: currentFilters.search_docnum,
         tipo_venta: currentFilters.tipo_venta,
@@ -91,8 +170,34 @@ export const DocumentosPage = () => {
       };
       const res = await client.get(`/docs/${targetObjType}`, { params });
       if (res.status === 'ok') {
-        setDocuments(res.pedidos || []);
-        setTotalCount(res.total_count || 0);
+        let fetchedDocs = res.pedidos || [];
+
+        const clientTerm = (currentFilters.cliente || '').trim().toLowerCase();
+        const docnumTerm = (currentFilters.search_docnum || '').replace('#', '').trim().toLowerCase();
+        const tipoTerm = (currentFilters.tipo_venta || '').trim().toLowerCase();
+        const estadoPrepTerm = currentFilters.estado_preparacion || '';
+
+        if (clientTerm || docnumTerm || tipoTerm || estadoPrepTerm) {
+          fetchedDocs = fetchedDocs.filter((doc) => {
+            const docNumStr = String(doc.DOCNUM ?? doc.DOCENTRY ?? doc.DocNum ?? doc.DocEntry ?? '').toLowerCase();
+            const cardNameStr = String(doc.CARDNAME ?? doc.CardName ?? '').toLowerCase();
+            const cardCodeStr = String(doc.CARDCODE ?? doc.CardCode ?? '').toLowerCase();
+            const tipoStr = String(doc.TIPOVENTA ?? doc.TipoVenta ?? '').toLowerCase();
+            const gestionadas = doc.CUENTA_PREPARADO || 0;
+
+            const matchDocnum = !docnumTerm || docNumStr.includes(docnumTerm);
+            const matchClient = !clientTerm || cardNameStr.includes(clientTerm) || cardCodeStr.includes(clientTerm);
+            const matchTipo = !tipoTerm || tipoStr.includes(tipoTerm);
+            const matchEstado = !estadoPrepTerm ||
+              (estadoPrepTerm === 'en_preparacion' && gestionadas > 0) ||
+              (estadoPrepTerm === 'sin_iniciar' && gestionadas === 0);
+
+            return matchDocnum && matchClient && matchTipo && matchEstado;
+          });
+        }
+
+        setDocuments(fetchedDocs);
+        setTotalCount(res.total_count || fetchedDocs.length);
         setPage(targetPage);
       } else {
         message.error(res.message || 'Error cargando documentos');
@@ -105,8 +210,8 @@ export const DocumentosPage = () => {
   };
 
   const handleResetFilters = () => {
-    filterFormik.resetForm({ values: { cliente: '', search_docnum: '', tipo_venta: '' } });
-    fetchDocuments(objType, 1, { cliente: '', search_docnum: '', tipo_venta: '' });
+    filterFormik.resetForm({ values: { cliente: '', search_docnum: '', tipo_venta: '', estado_preparacion: '' } });
+    fetchDocuments(objType, 1, { cliente: '', search_docnum: '', tipo_venta: '', estado_preparacion: '' });
   };
 
   const getTitle = () => {
@@ -117,6 +222,24 @@ export const DocumentosPage = () => {
     if (objType === '234000032') return 'Devoluciones de Compra';
     if (objType === '1250000001') return 'Solicitudes de Traslado';
     return 'Documentos';
+  };
+
+  const handleDeactivateDocument = async (doc) => {
+    try {
+      const isInactiveView = location.state?.verInactivos;
+      const endpoint = isInactiveView ? '/activar-pedido' : '/desactivar-pedido';
+      const actionText = isInactiveView ? 'activado' : 'desactivado';
+
+      const res = await client.post(endpoint, { docentry: doc.DOCENTRY || doc.DOCNUM });
+      if (res.status === 'ok') {
+        message.success(res.message || `Pedido #${doc.DOCNUM || doc.DOCENTRY} ${actionText} correctamente`);
+        fetchDocuments(objType, page, filterFormik.values);
+      } else {
+        message.error(res.message || `Error al ${actionText} pedido`);
+      }
+    } catch (err) {
+      message.error(err.message || 'Error en comunicación con el servidor');
+    }
   };
 
   return (
@@ -137,42 +260,64 @@ export const DocumentosPage = () => {
       >
         <form onSubmit={filterFormik.handleSubmit}>
           <Row gutter={[12, 12]} align="bottom">
-            {/* Cliente Descripcion */}
-            <Col xs={24} sm={12} md={8}>
+            {/* Cliente Descripcion con Sugerencias Estilo Google */}
+            <Col xs={24} sm={12} md={5}>
               <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#6c757d', marginBottom: 4 }}>
-                Cliente Descripcion
+                Cliente Descripción
               </label>
-              <Input
-                name="cliente"
-                placeholder="Seleccionar cliente o buscar..."
+              <AutoComplete
+                options={customerOptions}
                 value={filterFormik.values.cliente}
-                onChange={filterFormik.handleChange}
-                onPressEnter={filterFormik.handleSubmit}
-                allowClear
-                size="large"
-                style={{ borderRadius: 8 }}
-              />
+                onChange={(val) => {
+                  filterFormik.setFieldValue('cliente', val || '');
+                  handleSearchCustomer(val || '');
+                }}
+                onSelect={(val) => {
+                  filterFormik.setFieldValue('cliente', val || '');
+                  fetchDocuments(objType, 1, { ...filterFormik.values, cliente: val || '' });
+                }}
+                style={{ width: '100%' }}
+              >
+                <Input
+                  placeholder="Nombre o código cliente..."
+                  onPressEnter={filterFormik.handleSubmit}
+                  allowClear
+                  size="large"
+                  style={{ borderRadius: 8 }}
+                />
+              </AutoComplete>
             </Col>
 
-            {/* Num Documento */}
-            <Col xs={24} sm={12} md={8}>
+            {/* Num Documento con Sugerencias Estilo Google */}
+            <Col xs={24} sm={12} md={4}>
               <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#6c757d', marginBottom: 4 }}>
                 Num Documento
               </label>
-              <Input
-                name="search_docnum"
-                placeholder="Número de documento..."
+              <AutoComplete
+                options={docnumOptions}
                 value={filterFormik.values.search_docnum}
-                onChange={filterFormik.handleChange}
-                onPressEnter={filterFormik.handleSubmit}
-                allowClear
-                size="large"
-                style={{ borderRadius: 8 }}
-              />
+                onChange={(val) => {
+                  filterFormik.setFieldValue('search_docnum', val || '');
+                  handleSearchDocnum(val || '');
+                }}
+                onSelect={(val) => {
+                  filterFormik.setFieldValue('search_docnum', val || '');
+                  fetchDocuments(objType, 1, { ...filterFormik.values, search_docnum: val || '' });
+                }}
+                style={{ width: '100%' }}
+              >
+                <Input
+                  placeholder="Número..."
+                  onPressEnter={filterFormik.handleSubmit}
+                  allowClear
+                  size="large"
+                  style={{ borderRadius: 8 }}
+                />
+              </AutoComplete>
             </Col>
 
             {/* Tipo Venta */}
-            <Col xs={24} sm={12} md={8}>
+            <Col xs={24} sm={12} md={4}>
               <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#6c757d', marginBottom: 4 }}>
                 Tipo Venta
               </label>
@@ -186,31 +331,56 @@ export const DocumentosPage = () => {
               />
             </Col>
 
-            {/* Botones de Acción (Filtrar y Limpiar en Filas Independientes para Móviles) */}
-            <Col xs={24} sm={12}>
-              <Button
-                type="primary"
-                htmlType="submit"
-                icon={<SearchOutlined />}
-                loading={loading}
-                block
+            {/* Estado Preparación */}
+            <Col xs={24} sm={12} md={5}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#6c757d', marginBottom: 4 }}>
+                Estado Preparación
+              </label>
+              <Select
+                name="estado_preparacion"
+                value={filterFormik.values.estado_preparacion}
+                onChange={(val) => filterFormik.setFieldValue('estado_preparacion', val)}
                 size="large"
-                style={{ backgroundColor: '#1677ff', borderColor: '#1677ff', fontWeight: 700, borderRadius: 8, height: 44 }}
-              >
-                Filtrar
-              </Button>
+                style={{ width: '100%', borderRadius: 8 }}
+                options={ESTADO_PREPARACION_OPTIONS}
+              />
             </Col>
 
-            <Col xs={24} sm={12}>
-              <Button
-                icon={<ClearOutlined />}
-                onClick={handleResetFilters}
-                block
-                size="large"
-                style={{ fontWeight: 700, borderRadius: 8, height: 44 }}
-              >
-                Limpiar
-              </Button>
+            {/* Botones de Acción (Compactos y alineados en la misma fila en PC) */}
+            <Col xs={24} sm={24} md={6}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Button
+                  type="primary"
+                  htmlType="submit"
+                  icon={<SearchOutlined />}
+                  loading={loading}
+                  size="large"
+                  style={{
+                    flex: 1,
+                    backgroundColor: '#1677ff',
+                    borderColor: '#1677ff',
+                    fontWeight: 700,
+                    borderRadius: 8,
+                    height: 40
+                  }}
+                >
+                  Filtrar
+                </Button>
+
+                <Button
+                  icon={<ClearOutlined />}
+                  onClick={handleResetFilters}
+                  size="large"
+                  style={{
+                    flex: 1,
+                    fontWeight: 700,
+                    borderRadius: 8,
+                    height: 40
+                  }}
+                >
+                  Limpiar
+                </Button>
+              </div>
             </Col>
           </Row>
         </form>
@@ -220,6 +390,7 @@ export const DocumentosPage = () => {
         documents={documents}
         loading={loading}
         onOpenDetail={(doc) => setSelectedDetailDoc(doc)}
+        onDeactivateDocument={handleDeactivateDocument}
       />
 
       {totalCount > 20 && (

@@ -31,7 +31,7 @@ export const LoginPage = () => {
     initialValues: {
       username: '',
       password: '',
-      company_db: 'NouColors_D_TEST'
+      company_db: 'NouColors_D'
     },
     validationSchema: LoginSchema,
     onSubmit: async (values, { setSubmitting }) => {
@@ -145,9 +145,9 @@ export const LoginPage = () => {
                     value={formik.values.company_db}
                     onChange={(val) => formik.setFieldValue('company_db', val)}
                     options={[
-                      { value: 'NouColors_D', label: 'NouColors (Producción)' },
-                      { value: 'KLEANTEK_PROD', label: 'Kleantek (Producción)' },
-                      { value: 'NouColors_D_TEST', label: 'Entorno de Pruebas' }
+                      { value: 'NouColors_D', label: 'NouColors_D' },
+                      { value: 'KLEANTEK_PROD', label: 'Kleantek' },
+                      { value: 'NouColors_D_TEST', label: 'NouColors_D_TEST' }
                     ]}
                   />
                 </div>

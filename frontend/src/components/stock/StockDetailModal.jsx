@@ -7,14 +7,15 @@ import {
   SwapOutlined,
   ArrowUpOutlined,
   ArrowDownOutlined,
-  CommentOutlined,
-  CloseOutlined
+  CommentOutlined
 } from '@ant-design/icons';
-import client from '../../utils/client';
+import stockApi from '../../api/stockApi';
 
 const { Title, Text } = Typography;
 
 export const StockDetailModal = ({ open, item, activeTab = 'ubis', onClose }) => {
+  const [selectedTab, setSelectedTab] = useState(activeTab);
+
   const [necesidadesData, setNecesidadesData] = useState([]);
   const [necesidadesLoading, setNecesidadesLoading] = useState(false);
 
@@ -22,20 +23,28 @@ export const StockDetailModal = ({ open, item, activeTab = 'ubis', onClose }) =>
   const [movimientosData, setMovimientosData] = useState([]);
   const [movimientosLoading, setMovimientosLoading] = useState(false);
 
+  // Sincronizar selectedTab cuando cambia la pestaña activa desde fuera
+  useEffect(() => {
+    if (open) {
+      setSelectedTab(activeTab || 'ubis');
+    }
+  }, [open, activeTab]);
+
+  // Cargar datos dinámicos al cambiar a pestañas de necesidades o movimientos
   useEffect(() => {
     if (open && item && item.ItemCode) {
-      if (activeTab === 'nec' && necesidadesData.length === 0) {
+      if (selectedTab === 'nec' && necesidadesData.length === 0) {
         fetchNecesidades(item.ItemCode);
-      } else if (activeTab === 'mov' && movimientosData.length === 0) {
+      } else if (selectedTab === 'mov' && movimientosData.length === 0) {
         fetchMovimientos(item.ItemCode);
       }
     }
-  }, [open, item, activeTab]);
+  }, [open, item, selectedTab]);
 
   const fetchNecesidades = async (itemcode) => {
     setNecesidadesLoading(true);
     try {
-      const res = await client.get(`/stock/${encodeURIComponent(itemcode)}/necesidades`);
+      const res = await stockApi.getItemNecesidades(itemcode);
       if (res.status === 'ok') {
         setNecesidadesData(res.data || []);
       }
@@ -72,15 +81,6 @@ export const StockDetailModal = ({ open, item, activeTab = 'ubis', onClose }) =>
   const atpNeto = totalStock - totalCommitted + totalOrdered;
   const deficit = totalCommitted > (totalStock + totalOrdered) ? (totalCommitted - (totalStock + totalOrdered)) : 0;
 
-  const sectionConfig = {
-    ubis: { title: 'Ubicaciones en Estanterías', icon: <EnvironmentOutlined />, color: '#1677ff', bg: '#e6f4ff' },
-    whs: { title: 'Desglose por Almacenes SAP', icon: <ShopOutlined />, color: '#52c41a', bg: '#f6ffed' },
-    nec: { title: 'Análisis de Necesidades y Compras', icon: <BulbOutlined />, color: '#faad14', bg: '#fffbe6' },
-    mov: { title: 'Histórico de Movimientos', icon: <SwapOutlined />, color: '#722ed1', bg: '#f9f0ff' }
-  };
-
-  const currentConfig = sectionConfig[activeTab] || sectionConfig.ubis;
-
   return (
     <Modal
       title={
@@ -91,7 +91,7 @@ export const StockDetailModal = ({ open, item, activeTab = 'ubis', onClose }) =>
       }
       open={open}
       onCancel={onClose}
-      width={720}
+      width={760}
       footer={[
         <Button key="close" type="primary" onClick={onClose} block style={{ borderRadius: 8, height: 40, fontWeight: 700 }}>
           Cerrar
@@ -110,30 +110,108 @@ export const StockDetailModal = ({ open, item, activeTab = 'ubis', onClose }) =>
         <Descriptions.Item label="En Camino (Compras)">{totalOrdered} u.</Descriptions.Item>
       </Descriptions>
 
-      {/* Encabezado Banner de Sección Específica (Sin menú de pestañas) */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          backgroundColor: currentConfig.bg,
-          border: `1px solid ${currentConfig.color}44`,
-          borderRadius: 10,
-          padding: '10px 14px',
-          marginBottom: 14
-        }}
-      >
-        <span style={{ fontSize: 18, color: currentConfig.color, display: 'flex' }}>
-          {currentConfig.icon}
-        </span>
-        <span style={{ fontWeight: 800, color: '#1f2937', fontSize: '0.92rem' }}>
-          {currentConfig.title}
-        </span>
-      </div>
+      {/* 4 Tarjetas Selectoras Interactivas (Tipo Carta) */}
+      <Row gutter={[8, 8]} style={{ marginBottom: 16 }}>
+        <Col span={6}>
+          <div
+            onClick={() => setSelectedTab('ubis')}
+            style={{
+              padding: '10px 8px',
+              borderRadius: 10,
+              border: `1.5px solid ${selectedTab === 'ubis' ? '#1677ff' : '#e5e7eb'}`,
+              backgroundColor: selectedTab === 'ubis' ? '#e6f4ff' : '#ffffff',
+              boxShadow: selectedTab === 'ubis' ? '0 4px 12px rgba(22, 119, 255, 0.15)' : 'none',
+              cursor: 'pointer',
+              textAlign: 'center',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <EnvironmentOutlined style={{ fontSize: 18, color: '#1677ff', marginBottom: 2 }} />
+            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: selectedTab === 'ubis' ? '#1677ff' : '#374151' }}>
+              Ubicaciones
+            </div>
+            <Tag color="blue" style={{ fontSize: '0.65rem', margin: '2px 0 0 0', borderRadius: 4 }}>
+              {ubicaciones.length} ubi
+            </Tag>
+          </div>
+        </Col>
 
-      {/* Contenido según la Micro-Tarjeta seleccionada */}
-      <div style={{ maxHeight: '55vh', overflowY: 'auto', paddingRight: 4 }}>
-        {activeTab === 'ubis' && (
+        <Col span={6}>
+          <div
+            onClick={() => setSelectedTab('whs')}
+            style={{
+              padding: '10px 8px',
+              borderRadius: 10,
+              border: `1.5px solid ${selectedTab === 'whs' ? '#52c41a' : '#e5e7eb'}`,
+              backgroundColor: selectedTab === 'whs' ? '#f6ffed' : '#ffffff',
+              boxShadow: selectedTab === 'whs' ? '0 4px 12px rgba(82, 196, 26, 0.15)' : 'none',
+              cursor: 'pointer',
+              textAlign: 'center',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <ShopOutlined style={{ fontSize: 18, color: '#52c41a', marginBottom: 2 }} />
+            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: selectedTab === 'whs' ? '#389e0d' : '#374151' }}>
+              Almacenes
+            </div>
+            <Tag color="green" style={{ fontSize: '0.65rem', margin: '2px 0 0 0', borderRadius: 4 }}>
+              {warehouseList.length} SAP
+            </Tag>
+          </div>
+        </Col>
+
+        <Col span={6}>
+          <div
+            onClick={() => setSelectedTab('nec')}
+            style={{
+              padding: '10px 8px',
+              borderRadius: 10,
+              border: `1.5px solid ${selectedTab === 'nec' ? '#faad14' : '#e5e7eb'}`,
+              backgroundColor: selectedTab === 'nec' ? '#fffbe6' : '#ffffff',
+              boxShadow: selectedTab === 'nec' ? '0 4px 12px rgba(250, 173, 20, 0.15)' : 'none',
+              cursor: 'pointer',
+              textAlign: 'center',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <BulbOutlined style={{ fontSize: 18, color: '#faad14', marginBottom: 2 }} />
+            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: selectedTab === 'nec' ? '#d48806' : '#374151' }}>
+              Necesidades
+            </div>
+            <Tag color={deficit > 0 ? 'red' : 'gold'} style={{ fontSize: '0.65rem', margin: '2px 0 0 0', borderRadius: 4 }}>
+              {deficit > 0 ? `-${deficit}u` : 'ATP'}
+            </Tag>
+          </div>
+        </Col>
+
+        <Col span={6}>
+          <div
+            onClick={() => setSelectedTab('mov')}
+            style={{
+              padding: '10px 8px',
+              borderRadius: 10,
+              border: `1.5px solid ${selectedTab === 'mov' ? '#722ed1' : '#e5e7eb'}`,
+              backgroundColor: selectedTab === 'mov' ? '#f9f0ff' : '#ffffff',
+              boxShadow: selectedTab === 'mov' ? '0 4px 12px rgba(114, 46, 209, 0.15)' : 'none',
+              cursor: 'pointer',
+              textAlign: 'center',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <SwapOutlined style={{ fontSize: 18, color: '#722ed1', marginBottom: 2 }} />
+            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: selectedTab === 'mov' ? '#531dab' : '#374151' }}>
+              Movimientos
+            </div>
+            <Tag color="purple" style={{ fontSize: '0.65rem', margin: '2px 0 0 0', borderRadius: 4 }}>
+              {movimientosSummary.total_movimientos || 'Hist'}
+            </Tag>
+          </div>
+        </Col>
+      </Row>
+
+      {/* Contenido en Tarjetas Visuales segun la Tarjeta seleccionada */}
+      <div style={{ maxHeight: '50vh', overflowY: 'auto', paddingRight: 4 }}>
+        {selectedTab === 'ubis' && (
           <div>
             {ubicaciones.length === 0 ? (
               <Empty description="Sin ubicaciones registradas en estanterías" />
@@ -145,9 +223,9 @@ export const StockDetailModal = ({ open, item, activeTab = 'ubis', onClose }) =>
                       styles={{ body: { padding: 14 } }}
                       style={{
                         borderRadius: 10,
-                        border: '1px solid #f0f0f0',
+                        border: '1px solid #e5e7eb',
                         borderLeft: '4px solid #1677ff',
-                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.02)'
+                        boxShadow: '0 2px 6px rgba(0, 0, 0, 0.03)'
                       }}
                     >
                       <Row justify="space-between" align="middle" gutter={[8, 8]}>
@@ -170,7 +248,7 @@ export const StockDetailModal = ({ open, item, activeTab = 'ubis', onClose }) =>
                                 Lote: {ubi.DistNumber}
                               </Tag>
                             )}
-                            <Tag color="green" style={{ borderRadius: 6, fontWeight: 700, fontSize: '0.85rem', padding: '2px 8px' }}>
+                            <Tag color="green" style={{ borderRadius: 6, fontWeight: 700, fontSize: '0.88rem', padding: '2px 10px' }}>
                               {ubi.BINQTY || ubi.SNQTY || 0} u.
                             </Tag>
                           </Space>
@@ -184,7 +262,7 @@ export const StockDetailModal = ({ open, item, activeTab = 'ubis', onClose }) =>
           </div>
         )}
 
-        {activeTab === 'whs' && (
+        {selectedTab === 'whs' && (
           <div>
             <Row gutter={[12, 12]}>
               {warehouseList.map((whs) => {
@@ -195,9 +273,9 @@ export const StockDetailModal = ({ open, item, activeTab = 'ubis', onClose }) =>
                       styles={{ body: { padding: 14 } }}
                       style={{
                         borderRadius: 10,
-                        border: '1px solid #f0f0f0',
+                        border: '1px solid #e5e7eb',
                         borderLeft: '4px solid #52c41a',
-                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.02)'
+                        boxShadow: '0 2px 6px rgba(0, 0, 0, 0.03)'
                       }}
                     >
                       <Row justify="space-between" align="middle" gutter={[8, 8]}>
@@ -216,7 +294,7 @@ export const StockDetailModal = ({ open, item, activeTab = 'ubis', onClose }) =>
                             <Tag color="orange" style={{ borderRadius: 6, fontSize: '0.8rem' }}>
                               Comprom: {whs.Committed || 0} u.
                             </Tag>
-                            <Tag color={disp > 0 ? 'green' : 'red'} style={{ borderRadius: 6, fontWeight: 700, fontSize: '0.8rem' }}>
+                            <Tag color={disp > 0 ? 'green' : 'red'} style={{ borderRadius: 6, fontWeight: 700, fontSize: '0.85rem' }}>
                               Disp: {disp} u.
                             </Tag>
                           </Space>
@@ -230,11 +308,11 @@ export const StockDetailModal = ({ open, item, activeTab = 'ubis', onClose }) =>
           </div>
         )}
 
-        {activeTab === 'nec' && (
+        {selectedTab === 'nec' && (
           <div>
             <Card
               styles={{ body: { padding: 12 } }}
-              style={{ backgroundColor: '#f8fafc', borderRadius: 10, marginBottom: 12, border: '1px solid #e2e8f0' }}
+              style={{ backgroundColor: '#fffbe6', borderRadius: 10, marginBottom: 12, border: '1px solid #ffe58f' }}
             >
               <Row justify="space-between" align="middle" gutter={[8, 8]}>
                 <Col>
@@ -268,7 +346,7 @@ export const StockDetailModal = ({ open, item, activeTab = 'ubis', onClose }) =>
                   <Col span={24} key={idx}>
                     <Card
                       styles={{ body: { padding: 12 } }}
-                      style={{ borderRadius: 10, border: '1px solid #f0f0f0', borderLeft: '4px solid #faad14' }}
+                      style={{ borderRadius: 10, border: '1px solid #e5e7eb', borderLeft: '4px solid #faad14' }}
                     >
                       <div style={{ fontWeight: 700, color: '#1f2937', marginBottom: 4 }}>
                         <BulbOutlined style={{ marginRight: 6, color: '#faad14' }} />
@@ -286,10 +364,10 @@ export const StockDetailModal = ({ open, item, activeTab = 'ubis', onClose }) =>
           </div>
         )}
 
-        {activeTab === 'mov' && (
+        {selectedTab === 'mov' && (
           <div>
             {movimientosSummary.total_movimientos > 0 && (
-              <div style={{ marginBottom: 12, backgroundColor: '#f8fafc', padding: 10, borderRadius: 10, border: '1px solid #e2e8f0' }}>
+              <div style={{ marginBottom: 12, backgroundColor: '#f9f0ff', padding: 10, borderRadius: 10, border: '1px solid #d3adf7' }}>
                 <Row justify="space-between" align="middle" gutter={[8, 8]}>
                   <Col>
                     <Text type="secondary" style={{ fontSize: '0.78rem' }}>Última Compra: </Text>
@@ -323,7 +401,7 @@ export const StockDetailModal = ({ open, item, activeTab = 'ubis', onClose }) =>
                         styles={{ body: { padding: 12 } }}
                         style={{
                           borderRadius: 10,
-                          border: '1px solid #f0f0f0',
+                          border: '1px solid #e5e7eb',
                           borderLeft: `4px solid ${mov.categoria === 'traslado' ? '#fa8c16' : isPositive ? '#52c41a' : '#ff4d4f'}`
                         }}
                       >

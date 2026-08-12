@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import client from '../utils/client';
+import { message } from 'antd';
+import authApi from '../api/authApi';
+import printApi from '../api/printApi';
 import storage from '../utils/storage';
 
 const AuthContext = createContext();
@@ -16,13 +18,13 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     if (user) {
-      fetchPrinters();
+      fetchPrinters(user);
     }
   }, [user]);
 
   const checkSession = async () => {
     try {
-      const res = await client.get('/auth/session');
+      const res = await authApi.getSession();
       if (res && res.authenticated) {
         setUser(res.user);
       } else {
@@ -35,16 +37,29 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const fetchPrinters = async () => {
+  const fetchPrinters = async (currentUser) => {
     try {
-      const res = await client.get('/print/printers');
+      const res = await printApi.getPrinters();
       if (res.status === 'ok') {
         const list = res.impresoras || [];
         setPrintersList(list);
-        if (!activePrinter && list.length > 0) {
-          const defaultKey = list[0].key;
-          setActivePrinter(defaultKey);
-          storage.setActivePrinter(defaultKey);
+
+        const targetUser = currentUser || user;
+        const targetPrinter = targetUser?.printer || storage.getActivePrinter() || activePrinter;
+
+        if (targetPrinter) {
+          const found = list.find((p) => p.key === targetPrinter || p.value === targetPrinter);
+          if (found) {
+            setActivePrinter(found.key);
+            storage.setActivePrinter(found.key);
+            return;
+          }
+        }
+
+        // Si no tiene impresora asignada válida
+        if (!targetPrinter) {
+          setActivePrinter('');
+          storage.setActivePrinter('');
         }
       }
     } catch (err) {
@@ -53,10 +68,20 @@ export const AuthProvider = ({ children }) => {
   };
 
   const login = async (username, password, company_db) => {
-    const res = await client.post('/auth/login', { username, password, company_db });
+    const res = await authApi.login(username, password, company_db);
     if (res.status === 'ok') {
       const loggedUser = res.user || { username, company_db };
       setUser(loggedUser);
+
+      const assignedPrinter = loggedUser.printer || storage.getActivePrinter() || '';
+      if (!assignedPrinter) {
+        setActivePrinter('');
+        storage.setActivePrinter('');
+        message.warning('No tienes impresora asignada');
+      } else {
+        setActivePrinter(assignedPrinter);
+        storage.setActivePrinter(assignedPrinter);
+      }
       return true;
     }
     throw new Error(res.message || 'Error de autenticación');
@@ -64,7 +89,7 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      await client.post('/auth/logout');
+      await authApi.logout();
     } catch (err) {
       console.warn('Error durante logout:', err);
     } finally {

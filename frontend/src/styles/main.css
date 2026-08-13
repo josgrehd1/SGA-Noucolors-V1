@@ -7,6 +7,24 @@
   --text-primary: #1f2937;
   --border-color: #dee2e6;
   --accent-blue: #0d6efd;
+
+  /* Design Tokens SGA NouColors v2 */
+  --sga-primary-dark: #0f172a;
+  --sga-slate-800: #1e293b;
+  --sga-slate-700: #334155;
+  --sga-slate-600: #475569;
+  --sga-slate-500: #64748b;
+  --sga-slate-100: #f8fafc;
+  --sga-blue-600: #1677ff;
+  --sga-blue-500: #3b82f6;
+  --sga-emerald-500: #10b981;
+  --sga-amber-500: #f59e0b;
+  --sga-purple-500: #8b5cf6;
+  --sga-border: #e2e8f0;
+  --sga-radius-sm: 6px;
+  --sga-radius-md: 8px;
+  --sga-radius-lg: 10px;
+  --sga-radius-xl: 12px;
 }
 
 html, body {
@@ -122,7 +140,7 @@ html, body {
   border-color: #2d3748 !important;
 }
 
-/* Card Styling */
+/* Card Styling Base */
 .sga-card {
   border-radius: 12px;
   border: 1px solid #e2e8f0;
@@ -160,9 +178,872 @@ html, body {
   opacity: 1 !important;
 }
 
-/* Efectos de Micro-Tarjetas de Acción */
+/* ==========================================================================
+   SISTEMA DE FILTROS & BÚSQUEDA UNIFICADOS (Pixel-Perfect)
+   ========================================================================== */
+
+.sga-filter-panel {
+  background-color: #ffffff;
+  border-radius: var(--sga-radius-xl);
+  border: 1px solid var(--sga-border);
+  padding: 16px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+.sga-filter-label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--sga-slate-600);
+  margin-bottom: 6px;
+  height: 20px;
+  line-height: 20px;
+}
+
+.sga-filter-label-spacer {
+  height: 20px;
+  margin-bottom: 6px;
+}
+
+.sga-btn-filter-primary {
+  background-color: var(--sga-blue-600) !important;
+  border-color: var(--sga-blue-600) !important;
+  font-weight: 700 !important;
+  border-radius: var(--sga-radius-md) !important;
+}
+
+.sga-btn-filter-secondary {
+  font-weight: 700 !important;
+  border-radius: var(--sga-radius-md) !important;
+  color: var(--sga-slate-500) !important;
+}
+
+/* ==========================================================================
+   TARJETAS DE PRODUCTOS & STOCK
+   ========================================================================== */
+
+.sga-product-card {
+  border-radius: 14px !important;
+  border: 1px solid var(--sga-border) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03) !important;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background-color: #ffffff;
+}
+
+.sga-item-code-badge {
+  font-size: 0.85rem;
+  font-weight: 800;
+  font-family: monospace;
+  color: #1e293b;
+  background-color: #f1f5f9;
+  padding: 2px 8px;
+  border-radius: var(--sga-radius-sm);
+}
+
+.sga-product-title {
+  margin-top: 4px;
+  margin-bottom: 6px;
+  min-height: 38px;
+  color: var(--sga-primary-dark);
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.sga-location-preview-box {
+  background-color: var(--sga-slate-100);
+  padding: 6px 8px;
+  border-radius: var(--sga-radius-md);
+  margin-bottom: 10px;
+  border: 1px solid #f1f5f9;
+}
+
+/* Micro-tarjetas de Acción Rápida */
+.action-card-btn {
+  transition: all 0.15s ease;
+}
+
 .action-card-btn:hover, .action-card-btn:active {
   transform: translateY(-2px);
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
   filter: brightness(0.97);
 }
+
+.sga-action-microcard {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sga-action-microcard-ubis {
+  border: 1px solid #dbeafe;
+  background-color: #eff6ff;
+}
+
+.sga-action-microcard-whs {
+  border: 1px solid #d1fae5;
+  background-color: #ecfdf5;
+}
+
+.sga-action-microcard-nec {
+  border: 1px solid #fef3c7;
+  background-color: #fffbeb;
+}
+
+.sga-action-microcard-mov {
+  border: 1px solid #f3e8ff;
+  background-color: #faf5ff;
+}
+
+/* ==========================================================================
+   MODAL DETALLE DE STOCK & KPIS
+   ========================================================================== */
+
+.sga-modal-banner-header {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  border-radius: var(--sga-radius-xl);
+  padding: 16px 20px;
+  color: #ffffff;
+  margin-bottom: 16px;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.15);
+}
+
+.sga-kpi-card {
+  border-radius: var(--sga-radius-lg);
+  padding: 8px 10px;
+  text-align: center;
+}
+
+.sga-kpi-card-stock {
+  background-color: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+
+.sga-kpi-card-committed {
+  background-color: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+
+.sga-kpi-card-ordered {
+  background-color: #faf5ff;
+  border: 1px solid #e9d5ff;
+}
+
+.sga-kpi-card-atp-positive {
+  background-color: #f0f9ff;
+  border: 1px solid #bae6fd;
+}
+
+.sga-kpi-card-atp-negative {
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.sga-segmented-pill {
+  padding: 8px 6px;
+  border-radius: var(--sga-radius-lg);
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+
+.sga-segmented-pill-active {
+  background-color: #ffffff;
+}
+
+.sga-segmented-pill-inactive {
+  background-color: var(--sga-slate-100);
+  border: 1.5px solid #e2e8f0;
+}
+
+.sga-nec-card-box {
+  border-radius: var(--sga-radius-lg);
+  border: 1px solid var(--sga-border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+/* ==========================================================================
+   5. DETALLES DE DOCUMENTOS & NECESIDADES
+   ========================================================================== */
+
+.sga-badge-confirmed {
+  background-color: #dcfce7;
+  color: #15803d;
+  font-weight: 700;
+  font-size: 0.75rem;
+  padding: 3px 10px;
+  border-radius: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.sga-badge-pending {
+  background-color: #f3f4f6;
+  color: #6b7280;
+  font-weight: 600;
+  font-size: 0.75rem;
+  padding: 3px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+.sga-item-title {
+  font-weight: 800;
+  color: #111827;
+  font-size: 1rem;
+  margin-bottom: 10px;
+  line-height: 1.3;
+}
+
+.sga-nec-wrapper {
+  margin-bottom: 12px;
+  background-color: #fffbe6;
+  border: 1px solid #ffe58f;
+  border-radius: var(--sga-radius-lg);
+  padding: 10px;
+}
+
+.sga-nec-header {
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: #d48806;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sga-nec-item {
+  background-color: #ffffff;
+  padding: 8px 10px;
+  border-radius: var(--sga-radius-sm);
+  border: 1px solid #f0f0f0;
+  font-size: 0.78rem;
+}
+
+.sga-nec-client {
+  background-color: #f8fafc;
+  padding: 4px 8px;
+  border-radius: var(--sga-radius-sm);
+  border: 1px solid #e2e8f0;
+  color: #1e293b;
+  margin-bottom: 4px;
+  font-family: monospace;
+}
+
+.sga-nec-comments {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.sga-qty-box {
+  background-color: #dbeafe;
+  border-radius: var(--sga-radius-xl);
+  padding: 12px 16px;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.sga-qty-label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #4b5563;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.sga-qty-number {
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: #1d4ed8;
+  font-family: monospace;
+  line-height: 1;
+}
+
+/* ==========================================================================
+   6. COMPONENTES Y PASOS DE DETALLE DE DOCUMENTO (DocumentDetailModal)
+   ========================================================================== */
+
+.sga-qty-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.sga-qty-input-box {
+  background-color: #ffffff;
+  border-radius: var(--sga-radius-md);
+  padding: 2px 14px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.sga-qty-input {
+  width: 50px;
+  font-size: 1.6rem !important;
+  font-weight: 800 !important;
+  color: #0d6efd !important;
+  text-align: center;
+}
+
+.sga-qty-divider {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #1d4ed8;
+}
+
+.sga-qty-total {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #1d4ed8;
+}
+
+.sga-qty-unit {
+  font-size: 1rem;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.sga-qty-autofill-btn {
+  font-size: 20px;
+  color: #0d6efd;
+  cursor: pointer;
+  margin-left: 4px;
+  transition: transform 0.15s ease;
+}
+
+.sga-qty-autofill-btn:hover {
+  transform: scale(1.15);
+}
+
+/* Stock Disponible por Ubicación / Serie */
+.sga-stock-section {
+  margin-bottom: 16px;
+}
+
+.sga-stock-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #4b5563;
+  margin-bottom: 6px;
+}
+
+.sga-stock-table-header {
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #374151;
+}
+
+.sga-stock-table-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 0.82rem;
+  border-bottom: 1px dashed #f3f4f6;
+}
+
+.sga-stock-code {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.sga-stock-qty {
+  font-weight: 700;
+  color: #0d6efd;
+}
+
+.sga-stock-empty {
+  font-size: 0.78rem;
+  color: #9ca3af;
+  font-style: italic;
+  padding: 4px 0;
+}
+
+/* Pasos de Preparación */
+.sga-step-box {
+  margin-bottom: 14px;
+}
+
+.sga-step-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 4px;
+}
+
+.sga-step-required {
+  color: #dc3545;
+  font-weight: 700;
+}
+
+.sga-step-tag-mandatory {
+  color: #dc3545;
+  font-size: 0.75rem;
+  margin-left: 6px;
+}
+
+.sga-step-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.sga-btn-autofill-item {
+  background-color: #6c757d;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+}
+
+.sga-btn-confirm-line {
+  background-color: #0066ff !important;
+  border-color: #0066ff !important;
+  font-weight: 700 !important;
+  border-radius: 8px !important;
+  height: 44px !important;
+  box-shadow: 0 4px 10px rgba(0, 102, 255, 0.25) !important;
+}
+
+/* Badges de tarjeta en DocumentDetailModal */
+.sga-badge-itemcode {
+  background-color: #e5e7eb;
+  color: #1f2937;
+  font-weight: 700;
+  font-family: monospace;
+  font-size: 0.82rem;
+  padding: 3px 10px;
+  border-radius: 20px;
+}
+
+.sga-badge-whs {
+  background-color: #e5e7eb;
+  color: #4b5563;
+  font-size: 0.8rem;
+  padding: 3px 10px;
+  border-radius: 20px;
+}
+
+.sga-badge-bin-default {
+  background-color: #e0edff;
+  color: #0d6efd;
+  font-weight: 600;
+  font-size: 0.8rem;
+  padding: 3px 10px;
+  border-radius: 20px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ==========================================================================
+   7. COMPONENTE DOCUMENT LIST (DocumentList)
+   ========================================================================== */
+
+.sga-doc-card-container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border-radius: 14px !important;
+  border: 1px solid #f0f0f0 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04) !important;
+}
+
+.sga-doc-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sga-doc-badge-num {
+  font-weight: 800 !important;
+  font-family: monospace !important;
+  font-size: 0.88rem !important;
+  padding: 3px 10px !important;
+  border-radius: 6px !important;
+}
+
+.sga-doc-badge-prep {
+  font-weight: 700 !important;
+  font-size: 0.78rem !important;
+  border-radius: 6px !important;
+  padding: 2px 8px !important;
+}
+
+.sga-doc-kpi-box {
+  background-color: #e0edff;
+  border: 1px solid #bae0ff;
+  border-radius: 10px;
+  padding: 4px 10px;
+  text-align: center;
+  min-width: 85px;
+  flex-shrink: 0;
+}
+
+.sga-doc-kpi-values {
+  font-weight: 800;
+  font-family: monospace;
+  font-size: 0.92rem;
+  color: #0d6efd;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+}
+
+.sga-doc-kpi-labels {
+  display: flex;
+  justify-content: space-around;
+  font-size: 0.62rem;
+  font-weight: 800;
+  color: #6c757d;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.sga-doc-info-banner {
+  background-color: #e6f7ff;
+  border: 1px solid #91caff;
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  font-size: 0.8rem;
+  color: #0958d9;
+  font-weight: 600;
+}
+
+.sga-doc-comments-banner {
+  background-color: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin-bottom: 12px;
+  font-size: 0.8rem;
+  color: #495057;
+}
+
+.sga-doc-action-bar {
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+  display: flex;
+  gap: 6px;
+}
+
+.sga-doc-btn-gest {
+  flex: 1;
+  border-color: #0d6efd !important;
+  color: #0d6efd !important;
+  font-weight: 700 !important;
+  border-radius: 6px !important;
+  font-size: 0.82rem !important;
+  padding: 0 4px !important;
+}
+
+.sga-doc-btn-det {
+  flex: 1;
+  border-color: #6c757d !important;
+  color: #495057 !important;
+  font-weight: 700 !important;
+  border-radius: 6px !important;
+  font-size: 0.82rem !important;
+  padding: 0 4px !important;
+}
+
+.sga-doc-btn-deact {
+  flex: 1;
+  border-color: #dc3545 !important;
+  color: #dc3545 !important;
+  font-weight: 700 !important;
+  border-radius: 6px !important;
+  font-size: 0.82rem !important;
+  padding: 0 4px !important;
+}
+
+.sga-doc-preview-box {
+  margin-top: 10px;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.sga-doc-preview-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+  padding: 3px 0;
+}
+
+/* ==========================================================================
+   8. COMPONENTE SEMI PREPARE MODAL (SemiPrepareModal)
+   ========================================================================== */
+
+.sga-semiprep-target-box {
+  background-color: #fffbe6;
+  border: 1px solid #ffe58f;
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.sga-semiprep-target-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #d48806;
+  margin-bottom: 6px;
+}
+
+.sga-semiprep-target-input {
+  border-radius: 8px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+}
+
+.sga-semiprep-btn-submit {
+  background-color: #ffc107 !important;
+  border-color: #ffc107 !important;
+  color: #000 !important;
+  font-weight: 700 !important;
+  border-radius: 6px !important;
+}
+
+.sga-semiprep-item-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #1f2937;
+}
+
+.sga-semiprep-qty-input {
+  width: 90px;
+  border-radius: 6px !important;
+  font-weight: 700 !important;
+}
+
+/* ==========================================================================
+   9. FORMULARIOS Y MODALES GENERALES (Form Fields & Actions)
+   ========================================================================== */
+
+.sga-form-field-group {
+  margin-bottom: 16px;
+}
+
+.sga-form-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--sga-slate-700);
+  margin-bottom: 4px;
+}
+
+.sga-form-error-msg {
+  color: #ff4d4f;
+  font-size: 0.8rem;
+  margin-top: 4px;
+}
+
+.sga-form-actions-right {
+  text-align: right;
+  margin-top: 24px;
+}
+
+/* ==========================================================================
+   10. MÓDULO ALBARANES (AlbaranList & Detail)
+   ========================================================================== */
+
+.sga-alb-card {
+  border-radius: 12px !important;
+  border: 1px solid #e5e7eb !important;
+  border-left: 4px solid #6c757d !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background-color: #ffffff;
+}
+
+.sga-alb-badge-num {
+  background-color: #f8f9fa !important;
+  color: #495057 !important;
+  border-color: #dee2e6 !important;
+  font-weight: 700 !important;
+  font-family: monospace !important;
+  font-size: 0.82rem !important;
+  padding: 3px 10px !important;
+  border-radius: 6px !important;
+}
+
+.sga-alb-kpi-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #6c757d;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sga-alb-kpi-val {
+  font-weight: 900;
+  font-family: monospace;
+  font-size: 1.4rem;
+  color: #212529;
+  line-height: 1.1;
+}
+
+.sga-alb-btn-primary {
+  flex: 1;
+  background-color: #0d6efd !important;
+  border-color: #0d6efd !important;
+  font-weight: 600 !important;
+  border-radius: 6px !important;
+  height: 32px !important;
+}
+
+.sga-alb-btn-pdf {
+  flex: 1;
+  font-weight: 600 !important;
+  border-radius: 6px !important;
+  height: 32px !important;
+}
+
+.sga-alb-btn-print {
+  flex: 1;
+  border-color: #6c757d !important;
+  color: #495057 !important;
+  font-weight: 600 !important;
+  border-radius: 6px !important;
+  height: 32px !important;
+}
+
+.sga-alb-detail-banner {
+  margin-bottom: 16px;
+  background-color: #f8f9fa;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.sga-alb-detail-card {
+  border-radius: 10px !important;
+  border: 1px solid #f0f0f0 !important;
+  border-left: 4px solid #1677ff !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02) !important;
+}
+
+.sga-alb-detail-item-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #1f2937;
+}
+
+.sga-alb-detail-qty-tag {
+  border-radius: 6px !important;
+  font-weight: 700 !important;
+  font-size: 0.85rem !important;
+  padding: 4px 10px !important;
+}
+
+/* ==========================================================================
+   11. NAVEGACIÓN Y HEADER (Navbar & SidebarNav)
+   ========================================================================== */
+
+.sga-nav-dropdown-btn {
+  color: #ffffff !important;
+  font-weight: 500 !important;
+}
+
+.sga-printer-btn-styled {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  font-size: 0.85rem !important;
+}
+
+.sga-user-avatar-btn {
+  background-color: #0d6efd !important;
+  border-color: #0d6efd !important;
+}
+
+/* ==========================================================================
+   12. PÁGINA DE LOGIN (LoginPage)
+   ========================================================================== */
+
+.sga-login-page-bg {
+  min-height: 100vh;
+  background-color: #f8f9fa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.sga-login-card {
+  border-radius: 12px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08) !important;
+  overflow: hidden !important;
+  background-color: #ffffff !important;
+}
+
+.sga-login-header {
+  background-color: #1a202e;
+  background-image: radial-gradient(circle at 20% 30%, #2d3748 0%, #1a202e 100%);
+  padding: 24px 16px;
+  text-align: center;
+}
+
+.sga-login-logo-box {
+  background-color: #ffffff;
+  display: inline-block;
+  padding: 6px 16px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.sga-login-subtitle {
+  color: #0dcaf0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.sga-login-btn-submit {
+  background-color: #1a202e !important;
+  border-color: #1a202e !important;
+  font-weight: 700 !important;
+  height: 46px !important;
+  border-radius: 8px !important;
+  font-size: 1rem !important;
+}
+
+
+
+
+
+
+
+
+

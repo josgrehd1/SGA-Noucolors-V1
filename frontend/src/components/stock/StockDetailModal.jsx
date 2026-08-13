@@ -119,30 +119,11 @@ export const StockDetailModal = ({ open, item, activeTab = 'ubis', onClose }) =>
       ]}
     >
       {/* 1. Header Banner Premium estilo Dark Slate */}
-      <div
-        style={{
-          background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-          borderRadius: 12,
-          padding: '16px 20px',
-          color: '#ffffff',
-          marginBottom: 16,
-          boxShadow: '0 4px 14px rgba(15, 23, 42, 0.15)'
-        }}
-      >
+      <div className="sga-modal-banner-header">
         <Row justify="space-between" align="middle" gutter={[12, 12]}>
           <Col xs={24} sm={16}>
             <Space size={8} wrap style={{ marginBottom: 4 }}>
-              <span
-                style={{
-                  backgroundColor: '#3b82f6',
-                  color: '#ffffff',
-                  fontWeight: 800,
-                  fontFamily: 'monospace',
-                  fontSize: '0.85rem',
-                  padding: '2px 10px',
-                  borderRadius: 6
-                }}
-              >
+              <span className="sga-item-code-badge" style={{ backgroundColor: '#3b82f6', color: '#ffffff' }}>
                 {item.ItemCode}
               </span>
               {item.ItemsGroupCode && (
@@ -170,28 +151,28 @@ export const StockDetailModal = ({ open, item, activeTab = 'ubis', onClose }) =>
       {/* 2. Bloque Resumen 4 KPIs */}
       <Row gutter={[10, 10]} style={{ marginBottom: 16 }}>
         <Col span={6}>
-          <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '8px 10px', textAlign: 'center' }}>
+          <div className="sga-kpi-card sga-kpi-card-stock">
             <Text type="secondary" style={{ fontSize: '0.72rem', fontWeight: 600, display: 'block' }}>Stock Físico</Text>
             <Text strong style={{ fontSize: '0.95rem', color: '#166534', fontFamily: 'monospace' }}>{totalStock} u.</Text>
           </div>
         </Col>
 
         <Col span={6}>
-          <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '8px 10px', textAlign: 'center' }}>
+          <div className="sga-kpi-card sga-kpi-card-committed">
             <Text type="secondary" style={{ fontSize: '0.72rem', fontWeight: 600, display: 'block' }}>Comprometido</Text>
             <Text strong style={{ fontSize: '0.95rem', color: '#1e40af', fontFamily: 'monospace' }}>{totalCommitted} u.</Text>
           </div>
         </Col>
 
         <Col span={6}>
-          <div style={{ backgroundColor: '#faf5ff', border: '1px solid #e9d5ff', borderRadius: 10, padding: '8px 10px', textAlign: 'center' }}>
+          <div className="sga-kpi-card sga-kpi-card-ordered">
             <Text type="secondary" style={{ fontSize: '0.72rem', fontWeight: 600, display: 'block' }}>En Camino</Text>
             <Text strong style={{ fontSize: '0.95rem', color: '#6b21a8', fontFamily: 'monospace' }}>{totalOrdered} u.</Text>
           </div>
         </Col>
 
         <Col span={6}>
-          <div style={{ backgroundColor: atpNeto >= 0 ? '#f0f9ff' : '#fef2f2', border: `1px solid ${atpNeto >= 0 ? '#bae6fd' : '#fecaca'}`, borderRadius: 10, padding: '8px 10px', textAlign: 'center' }}>
+          <div className={`sga-kpi-card ${atpNeto >= 0 ? 'sga-kpi-card-atp-positive' : 'sga-kpi-card-atp-negative'}`}>
             <Text type="secondary" style={{ fontSize: '0.72rem', fontWeight: 600, display: 'block' }}>ATP Neto</Text>
             <Text strong style={{ fontSize: '0.95rem', color: atpNeto >= 0 ? '#0369a1' : '#991b1b', fontFamily: 'monospace' }}>{atpNeto} u.</Text>
           </div>
@@ -206,15 +187,10 @@ export const StockDetailModal = ({ open, item, activeTab = 'ubis', onClose }) =>
             <Col span={6} key={tab.key}>
               <div
                 onClick={() => setSelectedTab(tab.key)}
+                className={`sga-segmented-pill ${isActive ? 'sga-segmented-pill-active' : 'sga-segmented-pill-inactive'}`}
                 style={{
-                  padding: '8px 6px',
-                  borderRadius: 10,
                   border: `1.5px solid ${isActive ? tab.color : '#e2e8f0'}`,
-                  backgroundColor: isActive ? '#ffffff' : '#f8fafc',
-                  boxShadow: isActive ? `0 4px 12px ${tab.color}20` : 'none',
-                  cursor: 'pointer',
-                  textAlign: 'center',
-                  transition: 'all 0.15s ease'
+                  boxShadow: isActive ? `0 4px 12px ${tab.color}20` : 'none'
                 }}
               >
                 <div style={{ fontSize: 16, color: isActive ? tab.color : '#64748b', marginBottom: 2 }}>
@@ -244,13 +220,9 @@ export const StockDetailModal = ({ open, item, activeTab = 'ubis', onClose }) =>
                 {ubicaciones.map((ubi, idx) => (
                   <Col span={24} key={`${ubi.BinCode}_${ubi.DistNumber}_${idx}`}>
                     <Card
+                      className="sga-nec-card-box"
                       styles={{ body: { padding: 12 } }}
-                      style={{
-                        borderRadius: 10,
-                        border: '1px solid #e2e8f0',
-                        borderLeft: '4px solid #3b82f6',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
-                      }}
+                      style={{ borderLeft: '4px solid #3b82f6' }}
                     >
                       <Row justify="space-between" align="middle" gutter={[8, 8]}>
                         <Col xs={24} sm={14}>
@@ -295,13 +267,9 @@ export const StockDetailModal = ({ open, item, activeTab = 'ubis', onClose }) =>
                 return (
                   <Col span={24} key={whs.WarehouseCode}>
                     <Card
+                      className="sga-nec-card-box"
                       styles={{ body: { padding: 12 } }}
-                      style={{
-                        borderRadius: 10,
-                        border: '1px solid #e2e8f0',
-                        borderLeft: '4px solid #10b981',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
-                      }}
+                      style={{ borderLeft: '4px solid #10b981' }}
                     >
                       <Row justify="space-between" align="middle" gutter={[8, 8]}>
                         <Col xs={24} sm={10}>
@@ -402,13 +370,9 @@ export const StockDetailModal = ({ open, item, activeTab = 'ubis', onClose }) =>
                   return (
                     <Col span={24} key={idx}>
                       <Card
+                        className="sga-nec-card-box"
                         styles={{ body: { padding: 12 } }}
-                        style={{
-                          borderRadius: 10,
-                          border: '1px solid #e2e8f0',
-                          borderLeft: `4px solid ${borderCol}`,
-                          boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
-                        }}
+                        style={{ borderLeft: `4px solid ${borderCol}` }}
                       >
                         {/* Fila 1: Badges y Número */}
                         <Row justify="space-between" align="middle" style={{ marginBottom: 6 }}>
@@ -494,12 +458,9 @@ export const StockDetailModal = ({ open, item, activeTab = 'ubis', onClose }) =>
                   return (
                     <Col span={24} key={idx}>
                       <Card
+                        className="sga-nec-card-box"
                         styles={{ body: { padding: 12 } }}
-                        style={{
-                          borderRadius: 10,
-                          border: '1px solid #e2e8f0',
-                          borderLeft: `4px solid ${mov.categoria === 'traslado' ? '#f97316' : isPositive ? '#10b981' : '#ef4444'}`
-                        }}
+                        style={{ borderLeft: `4px solid ${mov.categoria === 'traslado' ? '#f97316' : isPositive ? '#10b981' : '#ef4444'}` }}
                       >
                         <Row justify="space-between" align="middle" gutter={[8, 8]}>
                           <Col xs={24} sm={14}>

@@ -507,91 +507,43 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                     {/* 1. BADGES DE ENCABEZADO (ITEMCODE | Alm | Ubi Defecto Edit | Estado) */}
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center', justifyContent: 'space-between' }}>
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      <span
-                        style={{
-                          backgroundColor: '#e5e7eb',
-                          color: '#1f2937',
-                          fontWeight: 700,
-                          fontFamily: 'monospace',
-                          fontSize: '0.82rem',
-                          padding: '3px 10px',
-                          borderRadius: 20
-                        }}
-                      >
-                        {line.ITEMCODE}
-                      </span>
+                        <span className="sga-badge-itemcode">
+                          {line.ITEMCODE}
+                        </span>
 
-                      <span
-                        style={{
-                          backgroundColor: '#e5e7eb',
-                          color: '#4b5563',
-                          fontSize: '0.8rem',
-                          padding: '3px 10px',
-                          borderRadius: 20
-                        }}
-                      >
-                        <ShopOutlined style={{ marginRight: 4 }} /> Alm: {whsCode}
-                      </span>
+                        <span className="sga-badge-whs">
+                          <ShopOutlined style={{ marginRight: 4 }} /> Alm: {whsCode}
+                        </span>
 
-                      <span
-                        onClick={() => handleOpenChangeBinModal(line)}
-                        style={{
-                          backgroundColor: '#e0edff',
-                          color: '#0d6efd',
-                          fontWeight: 600,
-                          fontSize: '0.8rem',
-                          padding: '3px 10px',
-                          borderRadius: 20,
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4
-                        }}
-                      >
-                        <EnvironmentOutlined /> {defaultBin} <EditOutlined style={{ fontSize: '0.75rem' }} />
-                      </span>
+                        <span
+                          className="sga-badge-bin-default"
+                          onClick={() => handleOpenChangeBinModal(line)}
+                        >
+                          <EnvironmentOutlined /> {defaultBin} <EditOutlined style={{ fontSize: '0.75rem' }} />
+                        </span>
                       </div>
 
                       {/* Badge de estado: Confirmada / Pendiente */}
                       {isLineConfirmed ? (
-                        <span style={{
-                          backgroundColor: '#10b981',
-                          color: '#fff',
-                          fontWeight: 700,
-                          fontSize: '0.75rem',
-                          padding: '3px 10px',
-                          borderRadius: 20,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4,
-                          whiteSpace: 'nowrap'
-                        }}>
+                        <span className="sga-badge-confirmed">
                           <CheckCircleFilled style={{ fontSize: 13 }} /> Confirmada {ctdConfirmada} ud.
                         </span>
                       ) : (
-                        <span style={{
-                          backgroundColor: '#f3f4f6',
-                          color: '#6b7280',
-                          fontWeight: 600,
-                          fontSize: '0.75rem',
-                          padding: '3px 10px',
-                          borderRadius: 20,
-                          whiteSpace: 'nowrap'
-                        }}>
+                        <span className="sga-badge-pending">
                           ⬜ Pendiente
                         </span>
                       )}
                     </div>
 
                     {/* 2. NOMBRE DEL ARTÍCULO */}
-                    <div style={{ fontWeight: 800, color: '#111827', fontSize: '1rem', marginBottom: 10, lineHeight: 1.3 }}>
+                    <div className="sga-item-title">
                       {line.ITEMNAME || 'Sin descripción'}
                     </div>
 
                     {/* 2.1 NECESIDADES DE PEDIDOS DE COMPRA (SOLICITUDES TRASLADO, VENTAS, LLAMADAS) */}
                     {Array.isArray(line.NECESIDADES) && line.NECESIDADES.length > 0 && (
-                      <div style={{ marginBottom: 12, backgroundColor: '#fffbe6', border: '1px solid #ffe58f', borderRadius: 10, padding: 10 }}>
-                        <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#d48806', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div className="sga-nec-wrapper">
+                        <div className="sga-nec-header">
                           <BulbOutlined /> Necesidades / Reservas Origen ({line.NECESIDADES.length})
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -605,7 +557,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                             const observaciones = nec.COMENTARIO || nec.Comments || nec.COMENTARIO_LLAMADA || '';
 
                             return (
-                              <div key={nIdx} style={{ backgroundColor: '#ffffff', padding: '8px 10px', borderRadius: 6, border: '1px solid #f0f0f0', fontSize: '0.78rem' }}>
+                              <div key={nIdx} className="sga-nec-item">
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                                   <span style={{ fontWeight: 700, color: isTraslado ? '#d97706' : isVenta ? '#2563eb' : '#b45309' }}>
                                     📄 {nec.TIPO || 'Reserva'} Nº {docNum}
@@ -614,14 +566,14 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                                 </div>
 
                                 {cliente && (
-                                  <div style={{ backgroundColor: '#f8fafc', padding: '4px 8px', borderRadius: 4, border: '1px solid #e2e8f0', color: '#1e293b', marginBottom: 4, fontFamily: 'monospace' }}>
+                                  <div className="sga-nec-client">
                                     <span style={{ color: '#64748b', marginRight: 4 }}>🏢 Cliente:</span>
                                     <strong>{cliente}</strong>
                                   </div>
                                 )}
 
                                 {observaciones && observaciones !== '-' && (
-                                  <div style={{ marginTop: 4, paddingTop: 4, borderTop: '1px solid #f1f5f9' }}>
+                                  <div className="sga-nec-comments">
                                     <span style={{ color: '#64748b', fontWeight: 600, marginRight: 4 }}>💬 Observaciones:</span>
                                     <span style={{ color: '#334155' }}>{observaciones}</span>
                                   </div>
@@ -634,37 +586,13 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                     )}
 
                     {/* 3. CAJA CANTIDAD PREPARADA / TOTAL (ESTILO ORIGINAL AZUL) */}
-                    <div
-                      style={{
-                        backgroundColor: '#dbeafe',
-                        borderRadius: 12,
-                        padding: '12px 16px',
-                        textAlign: 'center',
-                        marginBottom: 16
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: '0.7rem',
-                          fontWeight: 800,
-                          color: '#4b5563',
-                          letterSpacing: '0.5px',
-                          marginBottom: 6,
-                          textTransform: 'uppercase'
-                        }}
-                      >
+                    <div className="sga-qty-box">
+                      <div className="sga-qty-label">
                         CANTIDAD PREPARADA / TOTAL
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                        <div
-                          style={{
-                            backgroundColor: '#ffffff',
-                            borderRadius: 8,
-                            padding: '2px 14px',
-                            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.06)'
-                          }}
-                        >
+                      <div className="sga-qty-row">
+                        <div className="sga-qty-input-box">
                           <InputNumber
                             min={0}
                             max={total}
@@ -672,45 +600,34 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                             onChange={(val) => setPreparedQtys({ ...preparedQtys, [idx]: val || 0 })}
                             controls={false}
                             bordered={false}
-                            style={{
-                              width: 50,
-                              fontSize: '1.6rem',
-                              fontWeight: 800,
-                              color: '#0d6efd',
-                              textAlign: 'center'
-                            }}
+                            className="sga-qty-input"
                           />
                         </div>
 
-                        <span style={{ fontSize: '1.6rem', fontWeight: 700, color: '#1d4ed8' }}>/</span>
+                        <span className="sga-qty-divider">/</span>
 
-                        <span style={{ fontSize: '1.6rem', fontWeight: 800, color: '#1d4ed8' }}>
+                        <span className="sga-qty-total">
                           {total}
                         </span>
 
-                        <span style={{ fontSize: '1rem', color: '#1d4ed8', fontWeight: 600 }}>uds</span>
+                        <span className="sga-qty-unit">uds</span>
 
                         <Tooltip title="Completar cantidad total">
                           <ThunderboltOutlined
                             onClick={() => handleAutoFillQty(idx, total)}
-                            style={{
-                              fontSize: 20,
-                              color: '#0d6efd',
-                              cursor: 'pointer',
-                              marginLeft: 4
-                            }}
+                            className="sga-qty-autofill-btn"
                           />
                         </Tooltip>
                       </div>
                     </div>
 
                     {/* 4. STOCK DISPONIBLE POR UBICACIÓN / SERIE */}
-                    <div style={{ marginBottom: 16 }}>
-                      <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4b5563', marginBottom: 6 }}>
+                    <div className="sga-stock-section">
+                      <div className="sga-stock-title">
                         📦 STOCK DISPONIBLE POR SERIE / UBICACIÓN
                       </div>
 
-                      <div style={{ borderBottom: '1px solid #e5e7eb', paddingBottom: 4, marginBottom: 4, display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', fontWeight: 700, color: '#374151' }}>
+                      <div className="sga-stock-table-header">
                         <span>Ubicación / Nº Serie</span>
                         <span>Cant.</span>
                       </div>
@@ -720,39 +637,29 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                           const code = getBinCode(u);
                           const qty = getBinQty(u);
                           return (
-                            <div
-                              key={uIdx}
-                              style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                padding: '4px 0',
-                                fontSize: '0.82rem',
-                                borderBottom: '1px dashed #f3f4f6'
-                              }}
-                            >
-                              <span style={{ fontWeight: 600, color: '#1f2937' }}>
+                            <div key={uIdx} className="sga-stock-table-row">
+                              <span className="sga-stock-code">
                                 {code || 'General'}
                               </span>
-                              <span style={{ fontWeight: 700, color: '#0d6efd' }}>
+                              <span className="sga-stock-qty">
                                 {qty}
                               </span>
                             </div>
                           );
                         })
                       ) : (
-                        <div style={{ fontSize: '0.78rem', color: '#9ca3af', fontStyle: 'italic', padding: '4px 0' }}>
+                        <div className="sga-stock-empty">
                           Sin ubicaciones registradas con stock
                         </div>
                       )}
                     </div>
 
                     {/* 5. PASO 1: Escanear Artículo */}
-                    <div style={{ marginBottom: 14 }}>
-                      <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 4 }}>
+                    <div className="sga-step-box">
+                      <div className="sga-step-title">
                         1. Escanear Artículo
                       </div>
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <div className="sga-step-row">
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <Input
                             prefix={<BarcodeOutlined style={{ color: '#9ca3af' }} />}
@@ -767,14 +674,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                                     type="text"
                                     icon={<SwapOutlined style={{ color: '#ffffff', fontSize: 14 }} />}
                                     onClick={() => handleAutoFillItemCode(idx, line.ITEMCODE)}
-                                    style={{
-                                      backgroundColor: '#6c757d',
-                                      borderRadius: 4,
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      padding: '2px 6px'
-                                    }}
+                                    className="sga-btn-autofill-item"
                                   />
                                 </Tooltip>
                               </div>
@@ -805,11 +705,11 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
 
                     {/* 6. PASO 2: Seleccionar Ubicación */}
                     <div style={{ marginBottom: 16 }}>
-                      <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 4 }}>
-                        2. Seleccionar Ubicación <span style={{ color: '#dc3545', fontWeight: 700 }}>*</span>
-                        {!isBinVerified && <span style={{ color: '#dc3545', fontSize: '0.75rem', marginLeft: 6 }}>Obligatorio</span>}
+                      <div className="sga-step-title">
+                        2. Seleccionar Ubicación <span className="sga-step-required">*</span>
+                        {!isBinVerified && <span className="sga-step-tag-mandatory">Obligatorio</span>}
                       </div>
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <div className="sga-step-row">
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <Select
                             showSearch
@@ -855,14 +755,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                       onClick={() => handleConfirmLine(idx, line)}
                       block
                       size="large"
-                      style={{
-                        backgroundColor: '#0066ff',
-                        borderColor: '#0066ff',
-                        fontWeight: 700,
-                        borderRadius: 8,
-                        height: 44,
-                        boxShadow: '0 4px 10px rgba(0, 102, 255, 0.25)'
-                      }}
+                      className="sga-btn-confirm-line"
                     >
                       Confirmar
                     </Button>

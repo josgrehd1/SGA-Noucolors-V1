@@ -59,7 +59,7 @@ export const InventoryForm = () => {
       <form onSubmit={formik.handleSubmit}>
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} md={8}>
-            <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Ubicación / Estantería:</label>
+            <label className="sga-form-label">Ubicación / Estantería:</label>
             <Input
               name="bin_code"
               prefix={<EnvironmentOutlined />}
@@ -71,12 +71,12 @@ export const InventoryForm = () => {
               status={formik.touched.bin_code && formik.errors.bin_code ? 'error' : ''}
             />
             {formik.touched.bin_code && formik.errors.bin_code && (
-              <div style={{ color: '#ff4d4f', fontSize: '0.8rem', marginTop: 4 }}>{formik.errors.bin_code}</div>
+              <div className="sga-form-error-msg">{formik.errors.bin_code}</div>
             )}
           </Col>
 
           <Col xs={24} sm={12} md={8}>
-            <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Código de Artículo / EAN:</label>
+            <label className="sga-form-label">Código de Artículo / EAN:</label>
             <Input
               name="item_code"
               prefix={<BarcodeOutlined />}
@@ -88,12 +88,12 @@ export const InventoryForm = () => {
               status={formik.touched.item_code && formik.errors.item_code ? 'error' : ''}
             />
             {formik.touched.item_code && formik.errors.item_code && (
-              <div style={{ color: '#ff4d4f', fontSize: '0.8rem', marginTop: 4 }}>{formik.errors.item_code}</div>
+              <div className="sga-form-error-msg">{formik.errors.item_code}</div>
             )}
           </Col>
 
           <Col xs={24} sm={12} md={8}>
-            <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Cantidad Recontada:</label>
+            <label className="sga-form-label">Cantidad Recontada:</label>
             <InputNumber
               min={0}
               style={{ width: '100%' }}
@@ -104,12 +104,12 @@ export const InventoryForm = () => {
               status={formik.touched.quantity && formik.errors.quantity ? 'error' : ''}
             />
             {formik.touched.quantity && formik.errors.quantity && (
-              <div style={{ color: '#ff4d4f', fontSize: '0.8rem', marginTop: 4 }}>{formik.errors.quantity}</div>
+              <div className="sga-form-error-msg">{formik.errors.quantity}</div>
             )}
           </Col>
         </Row>
 
-        <div style={{ textAlign: 'right', marginTop: 24 }}>
+        <div className="sga-form-actions-right">
           <Button type="primary" htmlType="submit" icon={<CheckOutlined />} loading={loading} size="large">
             Registrar Recuento
           </Button>

@@ -16,34 +16,11 @@ export const StockCard = ({ item, onOpenDetail, onOpenPrint }) => {
   const ubicaciones = item.Ubicaciones || [];
 
   return (
-    <Card
-      className="sga-product-card"
-      styles={{ body: { padding: 14 } }}
-      style={{
-        borderRadius: 14,
-        border: '1px solid #e2e8f0',
-        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.03)',
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'space-between',
-        backgroundColor: '#ffffff'
-      }}
-    >
+    <Card className="sga-product-card" styles={{ body: { padding: 14 } }}>
       <div>
         {/* Encabezado: Código + Grupo + Botón Imprimir + Tag Stock */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-          <span
-            style={{
-              fontSize: '0.85rem',
-              fontWeight: 800,
-              fontFamily: 'monospace',
-              color: '#1e293b',
-              backgroundColor: '#f1f5f9',
-              padding: '2px 8px',
-              borderRadius: 6
-            }}
-          >
+          <span className="sga-item-code-badge">
             {item.ItemCode}
           </span>
 
@@ -63,11 +40,7 @@ export const StockCard = ({ item, onOpenDetail, onOpenPrint }) => {
         </div>
 
         {/* Nombre del Artículo */}
-        <Title
-          level={5}
-          style={{ marginTop: 4, marginBottom: 6, minHeight: 38, color: '#0f172a', fontSize: '0.9rem', lineHeight: 1.35 }}
-          ellipsis={{ rows: 2 }}
-        >
+        <Title level={5} className="sga-product-title" ellipsis={{ rows: 2 }}>
           {item.ItemName}
         </Title>
 
@@ -78,7 +51,7 @@ export const StockCard = ({ item, onOpenDetail, onOpenPrint }) => {
         )}
 
         {/* Vista previa rápida de ubicaciones */}
-        <div style={{ background: '#f8fafc', padding: '6px 8px', borderRadius: 8, marginBottom: 10, border: '1px solid #f1f5f9' }}>
+        <div className="sga-location-preview-box">
           <Space size={4} wrap align="center">
             <EnvironmentOutlined style={{ color: '#3b82f6', fontSize: '0.8rem' }} />
             <Text style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569' }}>Ubis:</Text>
@@ -105,19 +78,8 @@ export const StockCard = ({ item, onOpenDetail, onOpenPrint }) => {
         <Row gutter={[6, 6]}>
           <Col span={12}>
             <div
-              className="action-card-btn"
+              className="action-card-btn sga-action-microcard sga-action-microcard-ubis"
               onClick={() => onOpenDetail(item, 'ubis')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '6px 8px',
-                borderRadius: 8,
-                border: '1px solid #dbeafe',
-                backgroundColor: '#eff6ff',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease'
-              }}
             >
               <div
                 style={{
@@ -144,19 +106,8 @@ export const StockCard = ({ item, onOpenDetail, onOpenPrint }) => {
 
           <Col span={12}>
             <div
-              className="action-card-btn"
+              className="action-card-btn sga-action-microcard sga-action-microcard-whs"
               onClick={() => onOpenDetail(item, 'whs')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '6px 8px',
-                borderRadius: 8,
-                border: '1px solid #d1fae5',
-                backgroundColor: '#ecfdf5',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease'
-              }}
             >
               <div
                 style={{
@@ -183,19 +134,8 @@ export const StockCard = ({ item, onOpenDetail, onOpenPrint }) => {
 
           <Col span={12}>
             <div
-              className="action-card-btn"
+              className="action-card-btn sga-action-microcard sga-action-microcard-nec"
               onClick={() => onOpenDetail(item, 'nec')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '6px 8px',
-                borderRadius: 8,
-                border: '1px solid #fef3c7',
-                backgroundColor: '#fffbeb',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease'
-              }}
             >
               <div
                 style={{
@@ -222,19 +162,8 @@ export const StockCard = ({ item, onOpenDetail, onOpenPrint }) => {
 
           <Col span={12}>
             <div
-              className="action-card-btn"
+              className="action-card-btn sga-action-microcard sga-action-microcard-mov"
               onClick={() => onOpenDetail(item, 'mov')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '6px 8px',
-                borderRadius: 8,
-                border: '1px solid #f3e8ff',
-                backgroundColor: '#faf5ff',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease'
-              }}
             >
               <div
                 style={{

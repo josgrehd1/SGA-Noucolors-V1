@@ -63,43 +63,21 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
             <Card
               hoverable
               styles={{ body: { padding: 16 } }}
-              style={{
-                borderRadius: 14,
-                border: '1px solid #f0f0f0',
-                borderTop: `4px solid ${borderHeaderColor}`,
-                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.04)',
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between'
-              }}
+              className="sga-doc-card-container"
+              style={{ borderTop: `4px solid ${borderHeaderColor}` }}
             >
               <div>
                 {/* 1. Fila de Encabezado: Nº Doc | Badge Estado | Almacén | Fecha */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 6 }}>
+                <div className="sga-doc-card-header">
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Tag
-                      color="blue"
-                      style={{
-                        fontWeight: 800,
-                        fontFamily: 'monospace',
-                        fontSize: '0.88rem',
-                        padding: '3px 10px',
-                        borderRadius: 6
-                      }}
-                    >
+                    <Tag color="blue" className="sga-doc-badge-num">
                       <FileTextOutlined style={{ marginRight: 4 }} /> #{doc.DOCNUM || doc.DOCENTRY}
                     </Tag>
 
                     {gestionadas > 0 && (
                       <Tag
                         color={gestionadas === totalLineas ? 'success' : 'warning'}
-                        style={{
-                          fontWeight: 700,
-                          fontSize: '0.78rem',
-                          borderRadius: 6,
-                          padding: '2px 8px'
-                        }}
+                        className="sga-doc-badge-prep"
                       >
                         {gestionadas === totalLineas ? '🟢 Preparado' : `🟠 En Preparación (${gestionadas}/${totalLineas})`}
                       </Tag>
@@ -132,45 +110,15 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
                   </div>
 
                   {/* Bloque KPI: G (Gestionadas) / D (Disponibles) / T (Total) */}
-                  <div
-                    style={{
-                      backgroundColor: '#e0edff',
-                      border: '1px solid #bae0ff',
-                      borderRadius: 10,
-                      padding: '4px 10px',
-                      textAlign: 'center',
-                      minWidth: 85,
-                      flexShrink: 0
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontWeight: 800,
-                        fontFamily: 'monospace',
-                        fontSize: '0.92rem',
-                        color: '#0d6efd',
-                        display: 'flex',
-                        justifyContent: 'space-around',
-                        alignItems: 'center'
-                      }}
-                    >
+                  <div className="sga-doc-kpi-box">
+                    <div className="sga-doc-kpi-values">
                       <span>{gestionadas}</span>
                       <span style={{ opacity: 0.4, padding: '0 2px' }}>/</span>
                       <span>{disponibles}</span>
                       <span style={{ opacity: 0.4, padding: '0 2px' }}>/</span>
                       <span>{totalLineas}</span>
                     </div>
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-around',
-                        fontSize: '0.62rem',
-                        fontWeight: 800,
-                        color: '#6c757d',
-                        textTransform: 'uppercase',
-                        marginTop: 2
-                      }}
-                    >
+                    <div className="sga-doc-kpi-labels">
                       <span style={{ flex: 1 }}>G</span>
                       <span style={{ flex: 1 }}>D</span>
                       <span style={{ flex: 1 }}>T</span>
@@ -181,17 +129,7 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
                 {/* 3. Línea de Texto Especial del Pedido (si existe) */}
                 {doc.PRIMERA_LINEA_TEXTO && (
                   <div
-                    style={{
-                      backgroundColor: '#e6f7ff',
-                      border: '1px solid #91caff',
-                      borderRadius: 8,
-                      padding: '6px 10px',
-                      marginBottom: 8,
-                      fontSize: '0.8rem',
-                      color: '#0958d9',
-                      fontWeight: 600
-                    }}
-                    className="text-truncate"
+                    className="sga-doc-info-banner text-truncate"
                     title={doc.PRIMERA_LINEA_TEXTO}
                   >
                     <InfoCircleOutlined style={{ marginRight: 6, color: '#1677ff' }} />
@@ -202,16 +140,7 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
                 {/* 4. Comentarios del Pedido (si existen) */}
                 {doc.COMMENTS && (
                   <div
-                    style={{
-                      backgroundColor: '#f8f9fa',
-                      border: '1px solid #e9ecef',
-                      borderRadius: 8,
-                      padding: '6px 10px',
-                      marginBottom: 12,
-                      fontSize: '0.8rem',
-                      color: '#495057'
-                    }}
-                    className="text-truncate"
+                    className="sga-doc-comments-banner text-truncate"
                     title={doc.COMMENTS}
                   >
                     <CommentOutlined style={{ marginRight: 6, color: '#8c8c8c' }} />
@@ -220,39 +149,23 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
                 )}
               </div>
 
-              {/* 4. Botonera Inferior: Gest. → | ≡ Det. | Desact. → (Réplica Exacta Proyecto Original) */}
+              {/* 4. Botonera Inferior */}
               <div>
-                <div style={{ paddingTop: 12, borderTop: '1px solid #f0f0f0', display: 'flex', gap: 6 }}>
+                <div className="sga-doc-action-bar">
                   {/* Botón Gest. */}
                   <Button
                     type="default"
                     onClick={() => onOpenDetail(doc)}
-                    style={{
-                      flex: 1,
-                      borderColor: '#0d6efd',
-                      color: '#0d6efd',
-                      fontWeight: 700,
-                      borderRadius: 6,
-                      fontSize: '0.82rem',
-                      padding: '0 4px'
-                    }}
+                    className="sga-doc-btn-gest"
                   >
                     Gest. <RightOutlined style={{ fontSize: '0.7rem' }} />
                   </Button>
 
-                  {/* Botón ≡ Det. (Desplegar vista previa de líneas) */}
+                  {/* Botón ≡ Det. */}
                   <Button
                     type="default"
                     onClick={() => toggleExpand(doc.DOCENTRY)}
-                    style={{
-                      flex: 1,
-                      borderColor: '#6c757d',
-                      color: '#495057',
-                      fontWeight: 700,
-                      borderRadius: 6,
-                      fontSize: '0.82rem',
-                      padding: '0 4px'
-                    }}
+                    className="sga-doc-btn-det"
                   >
                     <UnorderedListOutlined /> Det.
                   </Button>
@@ -262,31 +175,15 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
                     type="default"
                     danger
                     onClick={() => onDeactivateDocument && onDeactivateDocument(doc)}
-                    style={{
-                      flex: 1,
-                      borderColor: '#dc3545',
-                      color: '#dc3545',
-                      fontWeight: 700,
-                      borderRadius: 6,
-                      fontSize: '0.82rem',
-                      padding: '0 4px'
-                    }}
+                    className="sga-doc-btn-deact"
                   >
                     Desact. <RightOutlined style={{ fontSize: '0.7rem' }} />
                   </Button>
                 </div>
 
-                {/* Vista previa desplegable de líneas si se pulsa "≡ Det." */}
+                {/* Vista previa desplegable de líneas */}
                 {isExpanded && (
-                  <div
-                    style={{
-                      marginTop: 10,
-                      backgroundColor: '#f8fafc',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: 8,
-                      padding: '8px 10px'
-                    }}
-                  >
+                  <div className="sga-doc-preview-box">
                     <Text strong style={{ fontSize: '0.75rem', color: '#6c757d', display: 'block', marginBottom: 6 }}>
                       Vista Previa de Líneas ({totalLineas}):
                     </Text>
@@ -294,14 +191,8 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
                       doc.LINEAS.map((l, lIdx) => (
                         <div
                           key={lIdx}
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            fontSize: '0.78rem',
-                            padding: '3px 0',
-                            borderBottom: lIdx < doc.LINEAS.length - 1 ? '1px dashed #e2e8f0' : 'none'
-                          }}
+                          className="sga-doc-preview-row"
+                          style={{ borderBottom: lIdx < doc.LINEAS.length - 1 ? '1px dashed #e2e8f0' : 'none' }}
                         >
                           <span style={{ fontWeight: 600, color: '#1f2937' }} className="text-truncate">
                             {l.ITEMCODE} - {l.ITEMNAME || 'Sin descripción'}

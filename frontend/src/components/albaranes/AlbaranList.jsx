@@ -57,33 +57,12 @@ export const AlbaranList = ({ albaranes = [], onSelectAlbaran, loading }) => {
             <Card
               hoverable
               styles={{ body: { padding: 18 } }}
-              style={{
-                borderRadius: 12,
-                border: '1px solid #e5e7eb',
-                borderLeft: '4px solid #6c757d',
-                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)',
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-                backgroundColor: '#ffffff'
-              }}
+              className="sga-alb-card"
             >
               <div>
                 {/* 1. Header Tarjeta: Badge Albarán #DocNum */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <Tag
-                    style={{
-                      backgroundColor: '#f8f9fa',
-                      color: '#495057',
-                      borderColor: '#dee2e6',
-                      fontWeight: 700,
-                      fontFamily: 'monospace',
-                      fontSize: '0.82rem',
-                      padding: '3px 10px',
-                      borderRadius: 6
-                    }}
-                  >
+                  <Tag className="sga-alb-badge-num">
                     Albarán #{docnum}
                   </Tag>
                 </div>
@@ -108,10 +87,10 @@ export const AlbaranList = ({ albaranes = [], onSelectAlbaran, loading }) => {
 
                   {/* Mini-KPI Líneas */}
                   <Col span={8} style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#6c757d', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    <div className="sga-alb-kpi-label">
                       Líneas
                     </div>
-                    <div style={{ fontWeight: 900, fontFamily: 'monospace', fontSize: '1.4rem', color: '#212529', lineHeight: 1.1 }}>
+                    <div className="sga-alb-kpi-val">
                       {numLineas}
                     </div>
                   </Col>
@@ -125,14 +104,7 @@ export const AlbaranList = ({ albaranes = [], onSelectAlbaran, loading }) => {
                   size="small"
                   icon={<EyeOutlined />}
                   onClick={() => onSelectAlbaran(alb)}
-                  style={{
-                    flex: 1,
-                    backgroundColor: '#0d6efd',
-                    borderColor: '#0d6efd',
-                    fontWeight: 600,
-                    borderRadius: 6,
-                    height: 32
-                  }}
+                  className="sga-alb-btn-primary"
                 >
                   Detalle
                 </Button>
@@ -142,12 +114,7 @@ export const AlbaranList = ({ albaranes = [], onSelectAlbaran, loading }) => {
                   size="small"
                   icon={<FileTextOutlined />}
                   onClick={(e) => handleViewPdf(e, docentry)}
-                  style={{
-                    flex: 1,
-                    fontWeight: 600,
-                    borderRadius: 6,
-                    height: 32
-                  }}
+                  className="sga-alb-btn-pdf"
                 >
                   Ver PDF
                 </Button>
@@ -157,14 +124,7 @@ export const AlbaranList = ({ albaranes = [], onSelectAlbaran, loading }) => {
                   size="small"
                   icon={<PrinterOutlined />}
                   onClick={(e) => handlePrintPdf(e, docentry)}
-                  style={{
-                    flex: 1,
-                    borderColor: '#6c757d',
-                    color: '#495057',
-                    fontWeight: 600,
-                    borderRadius: 6,
-                    height: 32
-                  }}
+                  className="sga-alb-btn-print"
                 >
                   Imprimir
                 </Button>

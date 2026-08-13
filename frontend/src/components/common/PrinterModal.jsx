@@ -40,8 +40,8 @@ export const PrinterModal = ({ open, onClose }) => {
       footer={null}
     >
       <form onSubmit={formik.handleSubmit}>
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>
+        <div className="sga-form-field-group">
+          <label className="sga-form-label">
             Impresora Zebra Asignada:
           </label>
           <Select
@@ -55,13 +55,13 @@ export const PrinterModal = ({ open, onClose }) => {
             options={printersList.map((p) => ({ label: `${p.value} (${p.key})`, value: p.key }))}
           />
           {formik.touched.printer_ip && formik.errors.printer_ip && (
-            <div style={{ color: '#ff4d4f', fontSize: '0.8rem', marginTop: 4 }}>
+            <div className="sga-form-error-msg">
               {formik.errors.printer_ip}
             </div>
           )}
         </div>
 
-        <div style={{ textAlign: 'right', marginTop: 24 }}>
+        <div className="sga-form-actions-right">
           <Button style={{ marginRight: 8 }} onClick={onClose}>
             Cancelar
           </Button>

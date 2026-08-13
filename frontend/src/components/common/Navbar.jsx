@@ -110,31 +110,31 @@ export const Navbar = ({ onToggleSidebar, onOpenPrinterModal }) => {
             {user && (
               <div className="sga-desktop-nav" style={{ marginLeft: 16 }}>
                 <Dropdown menu={ventasMenu} trigger={['hover']}>
-                  <Button type="text" style={{ color: '#ffffff', fontWeight: 500 }}>
+                  <Button type="text" className="sga-nav-dropdown-btn">
                     Ventas <DownOutlined style={{ fontSize: '0.7rem' }} />
                   </Button>
                 </Dropdown>
 
                 <Dropdown menu={comprasMenu} trigger={['hover']}>
-                  <Button type="text" style={{ color: '#ffffff', fontWeight: 500 }}>
+                  <Button type="text" className="sga-nav-dropdown-btn">
                     Compras <DownOutlined style={{ fontSize: '0.7rem' }} />
                   </Button>
                 </Dropdown>
 
                 <Dropdown menu={trasladosMenu} trigger={['hover']}>
-                  <Button type="text" style={{ color: '#ffffff', fontWeight: 500 }}>
+                  <Button type="text" className="sga-nav-dropdown-btn">
                     Traslados <DownOutlined style={{ fontSize: '0.7rem' }} />
                   </Button>
                 </Dropdown>
 
                 <Dropdown menu={operacionesMenu} trigger={['hover']}>
-                  <Button type="text" style={{ color: '#ffffff', fontWeight: 500 }}>
+                  <Button type="text" className="sga-nav-dropdown-btn">
                     Operaciones <DownOutlined style={{ fontSize: '0.7rem' }} />
                   </Button>
                 </Dropdown>
 
                 <Dropdown menu={stockMenu} trigger={['hover']}>
-                  <Button type="text" style={{ color: '#ffffff', fontWeight: 500 }}>
+                  <Button type="text" className="sga-nav-dropdown-btn">
                     Stock <DownOutlined style={{ fontSize: '0.7rem' }} />
                   </Button>
                 </Dropdown>
@@ -151,13 +151,7 @@ export const Navbar = ({ onToggleSidebar, onOpenPrinterModal }) => {
                 type="default"
                 icon={<PrinterOutlined />}
                 onClick={onOpenPrinterModal}
-                className="sga-printer-btn"
-                style={{
-                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                  color: '#ffffff',
-                  borderColor: 'rgba(255, 255, 255, 0.3)',
-                  fontSize: '0.85rem'
-                }}
+                className="sga-printer-btn sga-printer-btn-styled"
               >
                 <span className="sga-printer-text">{activePrinterName}</span>
               </Button>
@@ -167,7 +161,7 @@ export const Navbar = ({ onToggleSidebar, onOpenPrinterModal }) => {
                   type="primary"
                   shape="circle"
                   icon={<UserOutlined />}
-                  style={{ backgroundColor: '#0d6efd', borderColor: '#0d6efd' }}
+                  className="sga-user-avatar-btn"
                 />
               </Dropdown>
             </Space>

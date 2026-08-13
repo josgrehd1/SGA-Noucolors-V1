@@ -70,13 +70,13 @@ export const PrintLabelModal = ({ open, item, onClose }) => {
       footer={null}
     >
       <form onSubmit={formik.handleSubmit}>
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Artículo:</label>
+        <div className="sga-form-field-group">
+          <label className="sga-form-label">Artículo:</label>
           <Input value={`${item.ItemCode} - ${item.ItemName}`} disabled />
         </div>
 
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Nº Serie / Lote (Opcional):</label>
+        <div className="sga-form-field-group">
+          <label className="sga-form-label">Nº Serie / Lote (Opcional):</label>
           <Input
             name="serial_number"
             placeholder="Ingrese número de serie o lote si aplica"
@@ -86,8 +86,8 @@ export const PrintLabelModal = ({ open, item, onClose }) => {
           />
         </div>
 
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Impresora Zebra:</label>
+        <div className="sga-form-field-group">
+          <label className="sga-form-label">Impresora Zebra:</label>
           <Select
             style={{ width: '100%' }}
             value={formik.values.printer_id || undefined}
@@ -98,12 +98,12 @@ export const PrintLabelModal = ({ open, item, onClose }) => {
             placeholder="Seleccione impresora Zebra"
           />
           {formik.touched.printer_id && formik.errors.printer_id && (
-            <div style={{ color: '#ff4d4f', fontSize: '0.8rem', marginTop: 4 }}>{formik.errors.printer_id}</div>
+            <div className="sga-form-error-msg">{formik.errors.printer_id}</div>
           )}
         </div>
 
         <div style={{ marginBottom: 20 }}>
-          <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Número de Copias:</label>
+          <label className="sga-form-label">Número de Copias:</label>
           <InputNumber
             min={1}
             max={99}
@@ -114,11 +114,11 @@ export const PrintLabelModal = ({ open, item, onClose }) => {
             status={formik.touched.copies && formik.errors.copies ? 'error' : ''}
           />
           {formik.touched.copies && formik.errors.copies && (
-            <div style={{ color: '#ff4d4f', fontSize: '0.8rem', marginTop: 4 }}>{formik.errors.copies}</div>
+            <div className="sga-form-error-msg">{formik.errors.copies}</div>
           )}
         </div>
 
-        <div style={{ textAlign: 'right', marginTop: 24 }}>
+        <div className="sga-form-actions-right">
           <Button style={{ marginRight: 8 }} onClick={onClose}>
             Cancelar
           </Button>

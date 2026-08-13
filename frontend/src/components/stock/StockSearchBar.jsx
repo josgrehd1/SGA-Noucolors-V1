@@ -32,16 +32,7 @@ export const StockSearchBar = ({ filters, onSearch, onReset, loading }) => {
   };
 
   return (
-    <Card
-      styles={{ body: { padding: '14px 18px' } }}
-      style={{
-        marginBottom: 20,
-        borderRadius: 12,
-        border: '1px solid #e2e8f0',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
-        backgroundColor: '#ffffff'
-      }}
-    >
+    <Card className="sga-filter-panel" styles={{ body: { padding: '14px 18px' } }}>
       <form onSubmit={formik.handleSubmit}>
         <Row gutter={[12, 12]} align="middle">
           {/* Buscar por Código / Nombre */}
@@ -54,7 +45,8 @@ export const StockSearchBar = ({ filters, onSearch, onReset, loading }) => {
               onChange={formik.handleChange}
               onPressEnter={formik.handleSubmit}
               allowClear
-              style={{ borderRadius: 8, height: 38 }}
+              size="large"
+              style={{ borderRadius: 8 }}
             />
           </Col>
 
@@ -68,7 +60,8 @@ export const StockSearchBar = ({ filters, onSearch, onReset, loading }) => {
               onChange={formik.handleChange}
               onPressEnter={formik.handleSubmit}
               allowClear
-              style={{ borderRadius: 8, height: 38 }}
+              size="large"
+              style={{ borderRadius: 8 }}
             />
           </Col>
 
@@ -95,14 +88,9 @@ export const StockSearchBar = ({ filters, onSearch, onReset, loading }) => {
                 htmlType="submit"
                 icon={<SearchOutlined />}
                 loading={loading}
-                style={{
-                  borderRadius: 8,
-                  height: 38,
-                  padding: '0 18px',
-                  fontWeight: 700,
-                  backgroundColor: '#1677ff',
-                  border: 'none'
-                }}
+                size="large"
+                className="sga-btn-filter-primary"
+                style={{ padding: '0 18px' }}
               >
                 Buscar
               </Button>
@@ -112,12 +100,8 @@ export const StockSearchBar = ({ filters, onSearch, onReset, loading }) => {
                   <Button
                     icon={<ClearOutlined />}
                     onClick={handleClear}
-                    style={{
-                      borderRadius: 8,
-                      height: 38,
-                      fontWeight: 600,
-                      color: '#64748b'
-                    }}
+                    size="large"
+                    className="sga-btn-filter-secondary"
                   >
                     Limpiar
                   </Button>

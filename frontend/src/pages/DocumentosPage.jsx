@@ -248,21 +248,12 @@ export const DocumentosPage = () => {
         {getTitle()}
       </Title>
 
-      <div
-        style={{
-          backgroundColor: '#ffffff',
-          borderRadius: 12,
-          padding: '16px',
-          marginBottom: 20,
-          boxShadow: '0 2px 6px rgba(0, 0, 0, 0.06)',
-          border: '1px solid #dee2e6'
-        }}
-      >
+      <div className="sga-filter-panel">
         <form onSubmit={filterFormik.handleSubmit}>
           <Row gutter={[12, 12]} align="top">
             {/* Cliente Descripcion con Sugerencias Estilo Google */}
             <Col xs={24} sm={12} md={5}>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#475569', marginBottom: 6, height: 20, lineHeight: '20px' }}>
+              <label className="sga-filter-label">
                 Cliente Descripción
               </label>
               <AutoComplete
@@ -291,7 +282,7 @@ export const DocumentosPage = () => {
 
             {/* Num Documento con Sugerencias Estilo Google */}
             <Col xs={24} sm={12} md={4}>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#475569', marginBottom: 6, height: 20, lineHeight: '20px' }}>
+              <label className="sga-filter-label">
                 Num Documento
               </label>
               <AutoComplete
@@ -320,7 +311,7 @@ export const DocumentosPage = () => {
 
             {/* Tipo Venta */}
             <Col xs={24} sm={12} md={5}>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#475569', marginBottom: 6, height: 20, lineHeight: '20px' }}>
+              <label className="sga-filter-label">
                 Tipo Venta
               </label>
               <Select
@@ -335,7 +326,7 @@ export const DocumentosPage = () => {
 
             {/* Estado Preparación */}
             <Col xs={24} sm={12} md={5}>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#475569', marginBottom: 6, height: 20, lineHeight: '20px' }}>
+              <label className="sga-filter-label">
                 Estado Preparación
               </label>
               <Select
@@ -350,7 +341,7 @@ export const DocumentosPage = () => {
 
             {/* Botones de Acción */}
             <Col xs={24} sm={24} md={5}>
-              <div style={{ height: 20, marginBottom: 6 }} />
+              <div className="sga-filter-label-spacer" />
               <div style={{ display: 'flex', gap: 8 }}>
                 <Button
                   type="primary"
@@ -358,13 +349,8 @@ export const DocumentosPage = () => {
                   icon={<SearchOutlined />}
                   loading={loading}
                   size="large"
-                  style={{
-                    flex: 1,
-                    backgroundColor: '#1677ff',
-                    borderColor: '#1677ff',
-                    fontWeight: 700,
-                    borderRadius: 8
-                  }}
+                  className="sga-btn-filter-primary"
+                  style={{ flex: 1 }}
                 >
                   Filtrar
                 </Button>
@@ -373,12 +359,8 @@ export const DocumentosPage = () => {
                   icon={<ClearOutlined />}
                   onClick={handleResetFilters}
                   size="large"
-                  style={{
-                    flex: 1,
-                    fontWeight: 700,
-                    borderRadius: 8,
-                    color: '#64748b'
-                  }}
+                  className="sga-btn-filter-secondary"
+                  style={{ flex: 1 }}
                 >
                   Limpiar
                 </Button>

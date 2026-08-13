@@ -102,7 +102,7 @@ export const SemiPrepareModal = ({ open, document, onClose, onSuccess }) => {
           icon={<CheckOutlined />}
           loading={loading}
           onClick={handleConfirm}
-          style={{ backgroundColor: '#ffc107', borderColor: '#ffc107', color: '#000', fontWeight: 700, borderRadius: 6 }}
+          className="sga-semiprep-btn-submit"
         >
           Confirmar Semi-Preparación
         </Button>
@@ -110,8 +110,8 @@ export const SemiPrepareModal = ({ open, document, onClose, onSuccess }) => {
     >
       <div style={{ marginTop: 14 }}>
         {/* Selector / Input de Ubicación Destino */}
-        <div style={{ backgroundColor: '#fffbe6', border: '1px solid #ffe58f', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
-          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#d48806', marginBottom: 6 }}>
+        <div className="sga-semiprep-target-box">
+          <label className="sga-semiprep-target-label">
             <EnvironmentOutlined style={{ marginRight: 4 }} /> Ubicación Destino de Semi-Preparado (ej: BIN_SEMI / UB-SEMI-01):
           </label>
           <Input
@@ -119,7 +119,7 @@ export const SemiPrepareModal = ({ open, document, onClose, onSuccess }) => {
             onChange={(e) => setTargetBin(e.target.value)}
             placeholder="Ingrese código de ubicación destino..."
             size="large"
-            style={{ borderRadius: 8, fontWeight: 700, textTransform: 'uppercase' }}
+            className="sga-semiprep-target-input"
           />
         </div>
 
@@ -143,7 +143,7 @@ export const SemiPrepareModal = ({ open, document, onClose, onSuccess }) => {
                     <Row justify="space-between" align="middle" gutter={[8, 8]}>
                       <Col xs={24} sm={14}>
                         <Space direction="vertical" size={2}>
-                          <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#1f2937' }}>
+                          <div className="sga-semiprep-item-title">
                             <BoxPlotOutlined style={{ marginRight: 6, color: '#fa8c16' }} />
                             {line.ITEMCODE}
                           </div>
@@ -168,7 +168,7 @@ export const SemiPrepareModal = ({ open, document, onClose, onSuccess }) => {
                               max={reqQty}
                               value={quantities[idx] ?? reqQty}
                               onChange={(val) => handleQtyChange(idx, val)}
-                              style={{ width: 90, borderRadius: 6, fontWeight: 700 }}
+                              className="sga-semiprep-qty-input"
                             />
                           </div>
                         </Space>

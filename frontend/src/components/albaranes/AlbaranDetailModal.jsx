@@ -99,7 +99,7 @@ export const AlbaranDetailModal = ({ docEntry, open, onClose }) => {
         </div>
       ) : albaran ? (
         <div>
-          <div style={{ marginBottom: 16, backgroundColor: '#f8f9fa', padding: 12, borderRadius: 8, border: '1px solid #e9ecef' }}>
+          <div className="sga-alb-detail-banner">
             <Row justify="space-between" align="middle" gutter={[8, 8]}>
               <Col>
                 <Text strong style={{ fontSize: '0.85rem' }}>Fecha: </Text>
@@ -124,17 +124,12 @@ export const AlbaranDetailModal = ({ docEntry, open, onClose }) => {
                 <Col span={24} key={`${line.ItemCode}_${idx}`}>
                   <Card
                     styles={{ body: { padding: 14 } }}
-                    style={{
-                      borderRadius: 10,
-                      border: '1px solid #f0f0f0',
-                      borderLeft: '4px solid #1677ff',
-                      boxShadow: '0 2px 4px rgba(0, 0, 0, 0.02)'
-                    }}
+                    className="sga-alb-detail-card"
                   >
                     <Row justify="space-between" align="middle" gutter={[8, 8]}>
                       <Col xs={24} sm={16}>
                         <Space direction="vertical" size={2}>
-                          <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#1f2937' }}>
+                          <div className="sga-alb-detail-item-title">
                             <BoxPlotOutlined style={{ marginRight: 6, color: '#1677ff' }} />
                             {line.ItemCode}
                           </div>
@@ -145,7 +140,7 @@ export const AlbaranDetailModal = ({ docEntry, open, onClose }) => {
                       </Col>
 
                       <Col xs={24} sm={8} style={{ textAlign: 'right' }}>
-                        <Tag color="cyan" style={{ borderRadius: 6, fontWeight: 700, fontSize: '0.85rem', padding: '4px 10px' }}>
+                        <Tag color="cyan" className="sga-alb-detail-qty-tag">
                           Entregada: {line.Quantity} u.
                         </Tag>
                       </Col>

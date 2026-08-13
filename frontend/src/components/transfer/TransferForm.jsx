@@ -66,7 +66,7 @@ export const TransferForm = () => {
       <form onSubmit={formik.handleSubmit}>
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} md={6}>
-            <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Ubicación Origen:</label>
+            <label className="sga-form-label">Ubicación Origen:</label>
             <Input
               name="bin_from"
               prefix={<EnvironmentOutlined style={{ color: '#ff4d4f' }} />}
@@ -78,12 +78,12 @@ export const TransferForm = () => {
               status={formik.touched.bin_from && formik.errors.bin_from ? 'error' : ''}
             />
             {formik.touched.bin_from && formik.errors.bin_from && (
-              <div style={{ color: '#ff4d4f', fontSize: '0.8rem', marginTop: 4 }}>{formik.errors.bin_from}</div>
+              <div className="sga-form-error-msg">{formik.errors.bin_from}</div>
             )}
           </Col>
 
           <Col xs={24} sm={12} md={6}>
-            <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Ubicación Destino:</label>
+            <label className="sga-form-label">Ubicación Destino:</label>
             <Input
               name="bin_to"
               prefix={<EnvironmentOutlined style={{ color: '#52c41a' }} />}
@@ -95,12 +95,12 @@ export const TransferForm = () => {
               status={formik.touched.bin_to && formik.errors.bin_to ? 'error' : ''}
             />
             {formik.touched.bin_to && formik.errors.bin_to && (
-              <div style={{ color: '#ff4d4f', fontSize: '0.8rem', marginTop: 4 }}>{formik.errors.bin_to}</div>
+              <div className="sga-form-error-msg">{formik.errors.bin_to}</div>
             )}
           </Col>
 
           <Col xs={24} sm={12} md={6}>
-            <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Código Artículo / EAN:</label>
+            <label className="sga-form-label">Código Artículo / EAN:</label>
             <Input
               name="item_code"
               prefix={<BarcodeOutlined />}
@@ -112,12 +112,12 @@ export const TransferForm = () => {
               status={formik.touched.item_code && formik.errors.item_code ? 'error' : ''}
             />
             {formik.touched.item_code && formik.errors.item_code && (
-              <div style={{ color: '#ff4d4f', fontSize: '0.8rem', marginTop: 4 }}>{formik.errors.item_code}</div>
+              <div className="sga-form-error-msg">{formik.errors.item_code}</div>
             )}
           </Col>
 
           <Col xs={24} sm={12} md={6}>
-            <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Cantidad:</label>
+            <label className="sga-form-label">Cantidad:</label>
             <InputNumber
               min={1}
               style={{ width: '100%' }}
@@ -128,12 +128,12 @@ export const TransferForm = () => {
               status={formik.touched.quantity && formik.errors.quantity ? 'error' : ''}
             />
             {formik.touched.quantity && formik.errors.quantity && (
-              <div style={{ color: '#ff4d4f', fontSize: '0.8rem', marginTop: 4 }}>{formik.errors.quantity}</div>
+              <div className="sga-form-error-msg">{formik.errors.quantity}</div>
             )}
           </Col>
         </Row>
 
-        <div style={{ textAlign: 'right', marginTop: 24 }}>
+        <div className="sga-form-actions-right">
           <Button type="primary" htmlType="submit" icon={<SwapOutlined />} loading={loading} size="large">
             Ejecutar Traslado Directo
           </Button>

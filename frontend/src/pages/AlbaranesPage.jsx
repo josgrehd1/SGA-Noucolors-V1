@@ -72,20 +72,11 @@ export const AlbaranesPage = () => {
         Mis Albaranes
       </Title>
 
-      <div
-        style={{
-          backgroundColor: '#ffffff',
-          borderRadius: 8,
-          padding: '16px',
-          marginBottom: 20,
-          boxShadow: '0 2px 6px rgba(0, 0, 0, 0.06)',
-          border: '1px solid #dee2e6'
-        }}
-      >
+      <div className="sga-filter-panel">
         <form onSubmit={filterFormik.handleSubmit}>
           <Row gutter={[12, 12]} align="top">
             <Col xs={24} sm={12} md={9}>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#475569', marginBottom: 6, height: 20, lineHeight: '20px' }}>
+              <label className="sga-filter-label">
                 Num Albarán
               </label>
               <Input
@@ -101,7 +92,7 @@ export const AlbaranesPage = () => {
             </Col>
 
             <Col xs={24} sm={12} md={9}>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#475569', marginBottom: 6, height: 20, lineHeight: '20px' }}>
+              <label className="sga-filter-label">
                 Cliente
               </label>
               <Input
@@ -117,7 +108,7 @@ export const AlbaranesPage = () => {
             </Col>
 
             <Col xs={24} sm={24} md={6} style={{ textAlign: 'right' }}>
-              <div style={{ height: 20, marginBottom: 6 }} />
+              <div className="sga-filter-label-spacer" />
               <Space style={{ width: '100%', justify: 'end' }}>
                 <Button
                   type="primary"
@@ -125,11 +116,16 @@ export const AlbaranesPage = () => {
                   icon={<SearchOutlined />}
                   loading={loading}
                   size="large"
-                  style={{ backgroundColor: '#1677ff', borderColor: '#1677ff', fontWeight: 700, borderRadius: 8 }}
+                  className="sga-btn-filter-primary"
                 >
                   Buscar
                 </Button>
-                <Button icon={<ClearOutlined />} onClick={handleResetFilters} size="large" style={{ fontWeight: 700, borderRadius: 8, color: '#64748b' }}>
+                <Button
+                  icon={<ClearOutlined />}
+                  onClick={handleResetFilters}
+                  size="large"
+                  className="sga-btn-filter-secondary"
+                >
                   Limpiar
                 </Button>
               </Space>

@@ -58,7 +58,7 @@ export const BinLabelPrinter = () => {
       <form onSubmit={formik.handleSubmit}>
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} md={8}>
-            <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Código de Ubicación:</label>
+            <label className="sga-form-label">Código de Ubicación:</label>
             <Input
               name="bincode"
               prefix={<EnvironmentOutlined />}
@@ -70,12 +70,12 @@ export const BinLabelPrinter = () => {
               status={formik.touched.bincode && formik.errors.bincode ? 'error' : ''}
             />
             {formik.touched.bincode && formik.errors.bincode && (
-              <div style={{ color: '#ff4d4f', fontSize: '0.8rem', marginTop: 4 }}>{formik.errors.bincode}</div>
+              <div className="sga-form-error-msg">{formik.errors.bincode}</div>
             )}
           </Col>
 
           <Col xs={24} sm={12} md={8}>
-            <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Impresora Zebra:</label>
+            <label className="sga-form-label">Impresora Zebra:</label>
             <Select
               style={{ width: '100%' }}
               size="large"
@@ -87,12 +87,12 @@ export const BinLabelPrinter = () => {
               options={printersList.map((p) => ({ label: `${p.value} (${p.key})`, value: p.key }))}
             />
             {formik.touched.printer_id && formik.errors.printer_id && (
-              <div style={{ color: '#ff4d4f', fontSize: '0.8rem', marginTop: 4 }}>{formik.errors.printer_id}</div>
+              <div className="sga-form-error-msg">{formik.errors.printer_id}</div>
             )}
           </Col>
 
           <Col xs={24} sm={12} md={8}>
-            <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Número de Copias:</label>
+            <label className="sga-form-label">Número de Copias:</label>
             <InputNumber
               min={1}
               max={99}
@@ -104,12 +104,12 @@ export const BinLabelPrinter = () => {
               status={formik.touched.copies && formik.errors.copies ? 'error' : ''}
             />
             {formik.touched.copies && formik.errors.copies && (
-              <div style={{ color: '#ff4d4f', fontSize: '0.8rem', marginTop: 4 }}>{formik.errors.copies}</div>
+              <div className="sga-form-error-msg">{formik.errors.copies}</div>
             )}
           </Col>
         </Row>
 
-        <div style={{ textAlign: 'right', marginTop: 24 }}>
+        <div className="sga-form-actions-right">
           <Button type="primary" htmlType="submit" icon={<PrinterOutlined />} loading={loading} size="large">
             Imprimir Etiqueta Ubicación
           </Button>

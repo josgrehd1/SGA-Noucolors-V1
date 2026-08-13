@@ -3,6 +3,7 @@ from flask import jsonify, session, render_template, current_app
 from app.data.sap_repository import SapRepository
 from app.services.stock_service import StockService
 from app.utils.extensions import print_handler
+from app.utils.sap_series_mapper import SapSeriesMapper
 
 class AlbaranService:
     """
@@ -123,7 +124,7 @@ class AlbaranService:
         series_name = ""
         if series_id:
             try:
-                series_res = SapRepository.get_data("Series", id=int(series_id))
+                series_res = SapRepository.get_data("Series", filter={"Series": int(series_id)})
                 if series_res.get('status') == 'ok' and series_res.get('data'):
                     raw_s = series_res['data']
                     s_data = raw_s[0] if isinstance(raw_s, list) and len(raw_s) > 0 else raw_s
@@ -241,7 +242,19 @@ class AlbaranService:
             success, msg = print_handler.send_pdf_to_printer(pdf_bytes)
             if not success:
                 return False, msg
-        return True, "Albarán enviado a la impresora correctamente"
+    @staticmethod
+    def _obtener_serie_albaran_equivalente(order_series_id, target_obj_type=15):
+        """
+        Delega en SapSeriesMapper para mantener la lógica de mapeo de series
+        desacoplada del dominio de albaranes.
+        """
+        if not order_series_id:
+            return None
+        return SapSeriesMapper.map_series(
+            src_obj_type=17,
+            src_series_id=int(order_series_id),
+            dst_obj_type=target_obj_type
+        )
 
     @staticmethod
     def generar_albaran(resource_albaran, doc_original, lineas, mapping_fields):
@@ -253,12 +266,14 @@ class AlbaranService:
 
         lineas_agrupadas = {}
         for l in lineas:
-            key = (l.get('U_PedidoEntry'), l.get('U_PedidoLine'), l.get('U_ItemCode'))
-            if key not in lineas_agrupadas:
-                lineas_agrupadas[key] = copy.deepcopy(l)
-                lineas_agrupadas[key]['U_Quantity'] = float(l.get('U_Quantity', 0) or 0)
-            else:
-                lineas_agrupadas[key]['U_Quantity'] += float(l.get('U_Quantity', 0) or 0)
+            qty = float(l.get('U_Quantity', 0) or 0)
+            if qty > 0:
+                key = (l.get('U_PedidoEntry'), l.get('U_PedidoLine'), l.get('U_ItemCode'))
+                if key not in lineas_agrupadas:
+                    lineas_agrupadas[key] = copy.deepcopy(l)
+                    lineas_agrupadas[key]['U_Quantity'] = qty
+                else:
+                    lineas_agrupadas[key]['U_Quantity'] += qty
 
         lineas = list(lineas_agrupadas.values())
         albaran_payload = {}
@@ -269,7 +284,10 @@ class AlbaranService:
         for linea in lineas:
             pedido_line_num = int(linea.get('U_PedidoLine'))
             original_line = doc_original_lines_map.get(pedido_line_num, {})
-            ctd_preparada = linea.get('U_Quantity')
+            ctd_preparada = float(linea.get('U_Quantity', 0) or 0)
+            if ctd_preparada <= 0:
+                continue
+
             esta_semi = linea.get('U_Semi', 'N') == 'Y'
             bin_code_candidate = linea.get(fld_bin_to) if esta_semi else (linea.get(fld_bin_from) or linea.get(fld_bin_to) or linea.get('U_BinFrom') or linea.get('U_BinTo'))
             bin_def = mapping_ubi.get(bin_code_candidate)
@@ -299,12 +317,21 @@ class AlbaranService:
                     bin_whs = res_bin_info['data'][0].get('Warehouse')
 
             bin_payload = []
-            if bin_def:
-                bin_payload = [{"BinAbsEntry": bin_def, "SerialAndBatchNumbersBaseLine": -1, "Quantity": ctd_preparada}]
+            dist_num = linea.get('dist_number') or linea.get('U_DistNumber') or linea.get('serial_number') or linea.get('batch_number')
+
+            if bin_def and ctd_preparada > 0:
+                allocation = {
+                    "BinAbsEntry": int(bin_def),
+                    "Quantity": float(ctd_preparada),
+                    "BinActionType": "batFromWarehouse"
+                }
+                if dist_num:
+                    allocation["SerialAndBatchNumbersBaseLine"] = 0
+                bin_payload = [allocation]
 
             nueva_linea = {
                 'ItemCode': original_line.get('ItemCode') or linea.get('U_ItemCode'),
-                'Quantity': ctd_preparada,
+                'Quantity': float(ctd_preparada),
                 "BaseType": int(linea.get("U_ObjType", 17)),
                 "BaseEntry": int(linea.get("U_PedidoEntry")),
                 "BaseLine": pedido_line_num
@@ -313,8 +340,12 @@ class AlbaranService:
             if bin_whs:
                 nueva_linea['WarehouseCode'] = bin_whs
 
-            if bin_payload:
-                nueva_linea["DocumentLinesBinAllocations"] = bin_payload
+            # Si el artículo tiene gestión por número de serie, incluir SerialNumbers
+            if dist_num:
+                nueva_linea["SerialNumbers"] = [{
+                    "InternalSerialNumber": str(dist_num).strip(),
+                    "Quantity": 1
+                }]
 
             payload_lines.append(nueva_linea)
 
@@ -327,6 +358,12 @@ class AlbaranService:
                     albaran_payload[clave] = session.get('sap_employee_id', valor)
                 else:
                     albaran_payload[clave] = copy.deepcopy(valor)
+
+        # Mapear la Serie según U_MAC_Seriepedido del usuario creador (UserSign/OUSR) o Serie del Pedido (ORDR)
+        res_series = SapSeriesMapper.resolve_series_by_user_or_order(doc_original, dst_obj_type=15)
+        if res_series and res_series.get('dst_series_id'):
+            albaran_payload['Series'] = int(res_series['dst_series_id'])
+
 
         # Inyectar trazabilidad de operario para Acceso Indirecto
         if session.get('sap_employee_id'):

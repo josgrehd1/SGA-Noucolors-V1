@@ -259,10 +259,10 @@ export const DocumentosPage = () => {
         }}
       >
         <form onSubmit={filterFormik.handleSubmit}>
-          <Row gutter={[12, 12]} align="bottom">
+          <Row gutter={[12, 12]} align="top">
             {/* Cliente Descripcion con Sugerencias Estilo Google */}
             <Col xs={24} sm={12} md={5}>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#6c757d', marginBottom: 4 }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#475569', marginBottom: 6, height: 20, lineHeight: '20px' }}>
                 Cliente Descripción
               </label>
               <AutoComplete
@@ -277,6 +277,7 @@ export const DocumentosPage = () => {
                   fetchDocuments(objType, 1, { ...filterFormik.values, cliente: val || '' });
                 }}
                 style={{ width: '100%' }}
+                size="large"
               >
                 <Input
                   placeholder="Nombre o código cliente..."
@@ -290,7 +291,7 @@ export const DocumentosPage = () => {
 
             {/* Num Documento con Sugerencias Estilo Google */}
             <Col xs={24} sm={12} md={4}>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#6c757d', marginBottom: 4 }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#475569', marginBottom: 6, height: 20, lineHeight: '20px' }}>
                 Num Documento
               </label>
               <AutoComplete
@@ -305,6 +306,7 @@ export const DocumentosPage = () => {
                   fetchDocuments(objType, 1, { ...filterFormik.values, search_docnum: val || '' });
                 }}
                 style={{ width: '100%' }}
+                size="large"
               >
                 <Input
                   placeholder="Número..."
@@ -317,8 +319,8 @@ export const DocumentosPage = () => {
             </Col>
 
             {/* Tipo Venta */}
-            <Col xs={24} sm={12} md={4}>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#6c757d', marginBottom: 4 }}>
+            <Col xs={24} sm={12} md={5}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#475569', marginBottom: 6, height: 20, lineHeight: '20px' }}>
                 Tipo Venta
               </label>
               <Select
@@ -333,7 +335,7 @@ export const DocumentosPage = () => {
 
             {/* Estado Preparación */}
             <Col xs={24} sm={12} md={5}>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#6c757d', marginBottom: 4 }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#475569', marginBottom: 6, height: 20, lineHeight: '20px' }}>
                 Estado Preparación
               </label>
               <Select
@@ -346,8 +348,9 @@ export const DocumentosPage = () => {
               />
             </Col>
 
-            {/* Botones de Acción (Compactos y alineados en la misma fila en PC) */}
-            <Col xs={24} sm={24} md={6}>
+            {/* Botones de Acción */}
+            <Col xs={24} sm={24} md={5}>
+              <div style={{ height: 20, marginBottom: 6 }} />
               <div style={{ display: 'flex', gap: 8 }}>
                 <Button
                   type="primary"
@@ -360,8 +363,7 @@ export const DocumentosPage = () => {
                     backgroundColor: '#1677ff',
                     borderColor: '#1677ff',
                     fontWeight: 700,
-                    borderRadius: 8,
-                    height: 40
+                    borderRadius: 8
                   }}
                 >
                   Filtrar
@@ -375,7 +377,7 @@ export const DocumentosPage = () => {
                     flex: 1,
                     fontWeight: 700,
                     borderRadius: 8,
-                    height: 40
+                    color: '#64748b'
                   }}
                 >
                   Limpiar

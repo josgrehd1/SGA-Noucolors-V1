@@ -8,7 +8,7 @@ from flask_cors import CORS
 from flask_compress import Compress
 from flask_session import Session
 
-from app.utils.extensions import sl_handler, graph_handler, mail_sender, err_handler, socketio
+from app.utils.extensions import sl_handler, err_handler, socketio
 from app.version import APP_VERSION
 from binaries import register_binaries
 
@@ -61,8 +61,6 @@ def create_app():
 
     # Inicialización de extensiones
     sl_handler.init_app(app)
-    graph_handler.init_app(app)
-    mail_sender.init_app(app)
     err_handler.init_app(app)
     socketio.init_app(app, cors_allowed_origins="*")
 

@@ -284,7 +284,8 @@ class ServiceLayerHandler:
         if expand:
             query_params.append(f"$expand={','.join(expand)}")
 
-        query_params.append("$inlinecount=allpages")
+        if not resource.startswith('Series'):
+            query_params.append("$inlinecount=allpages")
 
         if query_params:
             url += f"?{'&'.join(query_params)}"
@@ -324,7 +325,14 @@ class ServiceLayerHandler:
         for key, val in filter_dict.items():
             if val is None or val == '':
                 continue
-            if key.endswith('__contains'):
+            if key == 'raw':
+                # Filtro OData raw: se usa tal cual, sin modificaciones
+                clauses.append(str(val))
+            elif key.endswith('__enum'):
+                # Valores enum de SAP OData (ej. dDocument_Delivery) — SIN comillas
+                field = key[:-6]
+                clauses.append(f"{field} eq {val}")
+            elif key.endswith('__contains'):
                 field = key[:-10]
                 clauses.append(f"contains({field}, '{val}')")
             elif key.endswith('__in'):
@@ -339,6 +347,10 @@ class ServiceLayerHandler:
                 field = key[:-9]
                 if isinstance(val, list) and len(val) == 2:
                     clauses.append(f"{field} ge '{val[0]}' and {field} le '{val[1]}'")
+            elif key.endswith('__greater'):
+                field = key[:-9]
+                formatted_val = val if isinstance(val, (int, float)) else f"'{val}'"
+                clauses.append(f"{field} gt {formatted_val}")
             else:
                 formatted_val = val if isinstance(val, (int, float)) else f"'{val}'"
                 clauses.append(f"{key} eq {formatted_val}")

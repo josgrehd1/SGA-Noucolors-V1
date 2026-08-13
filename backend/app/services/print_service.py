@@ -1,7 +1,6 @@
 import os
 from flask import current_app, session
 from app.data.sap_repository import SapRepository
-from app.data.printer_repository import PrinterRepository
 from app.utils.extensions import print_handler
 
 class PrintService:

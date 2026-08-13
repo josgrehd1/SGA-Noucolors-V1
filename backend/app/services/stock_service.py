@@ -88,12 +88,10 @@ class StockService:
                 "ItemName", 
                 "ItemsGroupCode", 
                 "ItemWarehouseInfoCollection", 
-                "ItemGroups",
                 "QuantityOnStock",
                 "QuantityOrderedByCustomers",
                 "QuantityOrderedFromVendors"
             ],
-            expand=["ItemGroups"],
             orderby="ItemName",
             order_direction="asc",
             filter=sap_filter,
@@ -275,6 +273,27 @@ class StockService:
         return False
 
     @staticmethod
+    def get_manage_serial_numbers(item_code):
+        """
+        Devuelve 'tYES' si el artículo tiene gestión por números de serie,
+        'tYES' para lotes (ManageBatchNumbers), o 'tNO' si no tiene gestión especial.
+        """
+        if not item_code:
+            return {'serial': False, 'batch': False}
+        info = SapRepository.get_data(
+            resource="Items",
+            selection=["ItemCode", "ManageSerialNumbers", "ManageBatchNumbers"],
+            filter={"ItemCode": str(item_code).strip()}
+        )
+        if info.get('status') == 'ok' and info.get('data'):
+            item = info['data'][0]
+            return {
+                'serial': item.get('ManageSerialNumbers') == 'tYES',
+                'batch': item.get('ManageBatchNumbers') == 'tYES'
+            }
+        return {'serial': False, 'batch': False}
+
+    @staticmethod
     def get_stock_info_producto(producto):
         if not producto:
             return []
@@ -346,54 +365,42 @@ class StockService:
     def get_id_ubicaciones(lista_ubicaciones):
         if not lista_ubicaciones:
             return {}
+        clean_list = list(set([str(u).strip() for u in lista_ubicaciones if u]))
+        if not clean_list:
+            return {}
         info = SapRepository.get_data(
             resource="BinLocations", 
             selection=["AbsEntry", "BinCode"], 
-            filter={"BinCode__in": list(set(lista_ubicaciones))}, 
+            filter={"BinCode__in": clean_list}, 
             all_results=True
         )
+        mapping = {}
         if info.get('status') == 'ok':
-            return {x['BinCode']: x['AbsEntry'] for x in info.get('data', [])}
-        return {}
+            for x in info.get('data', []):
+                code = x['BinCode']
+                abs_id = x['AbsEntry']
+                mapping[code] = abs_id
+                if len(code) > 20:
+                    mapping[code[:20]] = abs_id
+        return mapping
 
     @staticmethod
     def get_necesidades(itemcode):
         if not itemcode:
-            return {"status": "ok", "data": []}
+            return {"status": "ok", "data": [], "whs_committed": []}
         
-        needs_result = SapRepository.get_data_from_view(
-            view_name="NC_SGA_NECESIDADES_B1SLQuery",
-            filter={"ITEMCODE": str(itemcode).strip()},
-            all_results=True
-        )
-        if needs_result.get('status') == 'ok':
-            data = needs_result.get('data', [])
-            for d in data:
-                llamada_id = d.get("LLAMADA")
-                comment = ""
-                if llamada_id and (str(llamada_id).isdigit() and int(llamada_id) > 0):
-                    cid = int(llamada_id)
-                    try:
-                        sc_res = SapRepository.get_data(resource="ServiceCalls", id=cid, selection=["Description", "Subject", "Resolution"])
-                        if sc_res.get("status") == "ok" and sc_res.get("data"):
-                            sc = sc_res.get("data")[0] if isinstance(sc_res.get("data"), list) else sc_res.get("data")
-                            comment = (sc.get("Description") or sc.get("Subject") or sc.get("Resolution") or "").strip()
-                    except Exception:
-                        pass
-
-                    if not comment:
-                        try:
-                            act_res = SapRepository.get_data(resource="Activities", id=cid, selection=["Notes", "Details"])
-                            if act_res.get("status") == "ok" and act_res.get("data"):
-                                act = act_res.get("data")[0] if isinstance(act_res.get("data"), list) else act_res.get("data")
-                                comment = (act.get("Notes") or act.get("Details") or "").strip()
-                        except Exception:
-                            pass
-
-                final_comment = comment if comment else "Sin comentarios registrados."
-                d["COMENTARIO"] = final_comment
-            return {"status": "ok", "data": data}
-        return {"status": "error", "message": needs_result.get('message', 'Error cargando necesidades')}
+        try:
+            from app.services.product_service import ProductService
+            res = ProductService.get_product_calls(itemcode)
+            return {
+                "status": "ok",
+                "data": res.get("calls", []),
+                "calls": res.get("calls", []),
+                "whs_committed": res.get("whs_committed", [])
+            }
+        except Exception as ex:
+            print(f"[StockService] Error obteniendo necesidades para {itemcode}: {ex}")
+            return {"status": "error", "message": str(ex), "data": [], "whs_committed": []}
 
     @staticmethod
     def get_movimientos(itemcode):

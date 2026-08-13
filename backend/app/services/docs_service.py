@@ -153,6 +153,45 @@ class DocsService:
         if filters.get('itemcode'):
             sap_filter["ITEMCODE__contains"] = str(filters['itemcode'])
 
+        if filters.get('docentry'):
+            doc_id = int(filters['docentry'])
+            obj_type = str(filters.get('objtype', '17'))
+            if obj_type == '17':
+                try:
+                    from app.utils.sap_series_mapper import SapSeriesMapper
+                    ord_data = None
+                    order_res = SapRepository.get_data("Orders", id=doc_id)
+                    if order_res.get('status') == 'ok' and order_res.get('data'):
+                        ord_data = order_res['data'][0]
+                    else:
+                        res_cab = SapRepository.get_data_from_view("NC_SGA_SOLICITUDES_CAB_B1SLQuery", filter={"DOCENTRY": doc_id})
+                        if res_cab.get('status') == 'ok' and res_cab.get('data'):
+                            cab = res_cab['data'][0]
+                            ord_data = {
+                                'DocNum': cab.get('DOCNUM'),
+                                'DocEntry': cab.get('DOCENTRY'),
+                                'UserSign': cab.get('USERSIGN') or cab.get('USER_SIGN') or cab.get('OWNERCODE'),
+                                'Series': cab.get('SERIES') or cab.get('SERIESCODE'),
+                                'SeriesName': cab.get('SERIESNAME')
+                            }
+
+                    print(f"[DEBUG ORD_DATA RESOLVED] ord_data={ord_data}")
+                    if ord_data:
+                        ord_num = ord_data.get('DocNum', doc_id)
+                        res_series = SapSeriesMapper.resolve_series_by_user_or_order(ord_data, dst_obj_type=15)
+                        s_name = res_series.get('series_name') if res_series else 'Desconocida / Default'
+                        dst_code = res_series.get('dst_series_id') if res_series else 'Default SAP'
+                        src_origin = res_series.get('src_type') if res_series else 'No detectado'
+                        print(f"\n======================================================================")
+                        print(f"  [PEDIDO SELECCIONADO EN PISTOLA/SGA]")
+                        print(f"  - Pedido N°: {ord_num} (DocEntry: {doc_id})")
+                        print(f"  - Creador / Origen: {src_origin}")
+                        print(f"  - SERIE DELEGACIÓN COMERCIAL: SERIE {s_name}")
+                        print(f"  - CÓDIGO SERIE ALBARÁN (ODLN.Series): {dst_code}")
+                        print(f"======================================================================\n")
+                except Exception as e:
+                    print(f"[SELECCIÓN DE PEDIDO] Error consultando serie: {e}")
+
         result = SapRepository.get_data_from_view(
             view_name="NC_SGA_SOLICITUDES_POS_B1SLQuery",
             filter=sap_filter,
@@ -172,6 +211,24 @@ class DocsService:
                         row['UBICACIONES'] = []
             else:
                 row['UBICACIONES'] = []
+
+        # Si el documento es un Pedido de Compra (OBJTYPE == '22'), adjuntar las necesidades/solicitudes de stock
+        objtype_filter = str(filters.get('objtype', '')) if filters else ''
+        first_objtype = str(data[0].get('OBJTYPE', '')) if data and data[0].get('OBJTYPE') else ''
+        if objtype_filter == '22' or first_objtype == '22':
+            from app.services.product_service import ProductService
+            unique_items = {str(row.get('ITEMCODE')).strip() for row in data if row.get('ITEMCODE')}
+            calls_map = {}
+            for item in unique_items:
+                try:
+                    res_calls = ProductService.get_product_calls(item)
+                    calls_map[item] = res_calls.get("calls", [])
+                except Exception as ex:
+                    print(f"[DocsService] Error al obtener necesidades para item {item}: {ex}")
+                    calls_map[item] = []
+            for row in data:
+                item_code = str(row.get('ITEMCODE', '')).strip()
+                row['NECESIDADES'] = calls_map.get(item_code, [])
 
         return {
             'info': data,
@@ -401,7 +458,8 @@ class DocsService:
         CAMPOS_VALIDOS = {
             'U_ItemCode', 'U_BinFrom', 'U_BinTo', 'U_WhsCode',
             'U_Llamada', 'U_PedidoEntry', 'U_PedidoLine',
-            'U_Estado', 'U_Quantity', 'U_ObjType', 'U_Traslado'
+            'U_Estado', 'U_Quantity', 'U_ObjType', 'U_Traslado',
+            'U_DistNumber'
         }
 
         qty = float(data.get('U_Quantity', 0) or 0)
@@ -422,6 +480,10 @@ class DocsService:
 
         payload = {k: v for k, v in data.items() if k in CAMPOS_VALIDOS}
         payload['U_Estado'] = payload.get('U_Estado', 'O')
+        if payload.get('U_BinFrom'):
+            payload['U_BinFrom'] = str(payload['U_BinFrom'])[:20]
+        if payload.get('U_BinTo'):
+            payload['U_BinTo'] = str(payload['U_BinTo'])[:20]
 
         # Buscar si ya existe un registro abierto en NC_SGAWEB_DOCS para esta misma línea de pedido
         if pedido_entry is not None and pedido_line is not None:
@@ -620,19 +682,23 @@ class DocsService:
                 pass
             else:
                 if abs_from:
-                    bin_allocations.append({
+                    alloc_from = {
                         "BinAbsEntry": abs_from,
                         "Quantity": float(lin.get(fld_qty, 0)),
-                        "BinActionType": "batFromWarehouse",
-                        "SerialAndBatchNumbersBaseLine": 0 if lin.get('dist_number') else -1
-                    })
+                        "BinActionType": "batFromWarehouse"
+                    }
+                    if lin.get('dist_number'):
+                        alloc_from["SerialAndBatchNumbersBaseLine"] = 0
+                    bin_allocations.append(alloc_from)
                 if abs_to:
-                    bin_allocations.append({
+                    alloc_to = {
                         "BinAbsEntry": abs_to,
                         "Quantity": float(lin.get(fld_qty, 0)),
-                        "BinActionType": "batToWarehouse",
-                        "SerialAndBatchNumbersBaseLine": 0 if lin.get('dist_number') else -1
-                    })
+                        "BinActionType": "batToWarehouse"
+                    }
+                    if lin.get('dist_number'):
+                        alloc_to["SerialAndBatchNumbersBaseLine"] = 0
+                    bin_allocations.append(alloc_to)
 
             line_entry = {
                 "ItemCode": lin.get(fld_prod),

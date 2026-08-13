@@ -11,7 +11,9 @@ import {
   ThunderboltOutlined,
   ArrowLeftOutlined,
   BarcodeOutlined,
-  CheckOutlined
+  CheckOutlined,
+  BulbOutlined,
+  CommentOutlined
 } from '@ant-design/icons';
 import client from '../../utils/client';
 
@@ -582,9 +584,54 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                     </div>
 
                     {/* 2. NOMBRE DEL ARTÍCULO */}
-                    <div style={{ fontWeight: 800, color: '#111827', fontSize: '1rem', marginBottom: 14, lineHeight: 1.3 }}>
+                    <div style={{ fontWeight: 800, color: '#111827', fontSize: '1rem', marginBottom: 10, lineHeight: 1.3 }}>
                       {line.ITEMNAME || 'Sin descripción'}
                     </div>
+
+                    {/* 2.1 NECESIDADES DE PEDIDOS DE COMPRA (SOLICITUDES TRASLADO, VENTAS, LLAMADAS) */}
+                    {Array.isArray(line.NECESIDADES) && line.NECESIDADES.length > 0 && (
+                      <div style={{ marginBottom: 12, backgroundColor: '#fffbe6', border: '1px solid #ffe58f', borderRadius: 10, padding: 10 }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#d48806', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <BulbOutlined /> Necesidades / Reservas Origen ({line.NECESIDADES.length})
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {line.NECESIDADES.map((nec, nIdx) => {
+                            const isTraslado = nec.OBJTYPE === '1250000001' || nec.TIPO === 'Solicitud de Traslado';
+                            const isVenta = nec.OBJTYPE === '17' || nec.TIPO === 'Pedido de Venta';
+                            const docNum = nec.DOCNUM || nec.DocNum || nec.DOCENTRY || nec.LLAMADA || (nIdx + 1);
+                            const fromWhs = nec.FROM_WHS || nec.FromWarehouse || '01';
+                            const toWhs = nec.TO_WHS || nec.ToWarehouse || '13';
+                            const cliente = nec.CARDNAME || nec.CardName || (isTraslado ? `Traslado Alm. ${fromWhs} ➔ Alm. ${toWhs}` : '');
+                            const observaciones = nec.COMENTARIO || nec.Comments || nec.COMENTARIO_LLAMADA || '';
+
+                            return (
+                              <div key={nIdx} style={{ backgroundColor: '#ffffff', padding: '8px 10px', borderRadius: 6, border: '1px solid #f0f0f0', fontSize: '0.78rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                  <span style={{ fontWeight: 700, color: isTraslado ? '#d97706' : isVenta ? '#2563eb' : '#b45309' }}>
+                                    📄 {nec.TIPO || 'Reserva'} Nº {docNum}
+                                  </span>
+                                  {nec.QTY > 0 && <Tag color="purple" style={{ margin: 0, fontSize: '0.72rem' }}>{nec.QTY} u.</Tag>}
+                                </div>
+
+                                {cliente && (
+                                  <div style={{ backgroundColor: '#f8fafc', padding: '4px 8px', borderRadius: 4, border: '1px solid #e2e8f0', color: '#1e293b', marginBottom: 4, fontFamily: 'monospace' }}>
+                                    <span style={{ color: '#64748b', marginRight: 4 }}>🏢 Cliente:</span>
+                                    <strong>{cliente}</strong>
+                                  </div>
+                                )}
+
+                                {observaciones && observaciones !== '-' && (
+                                  <div style={{ marginTop: 4, paddingTop: 4, borderTop: '1px solid #f1f5f9' }}>
+                                    <span style={{ color: '#64748b', fontWeight: 600, marginRight: 4 }}>💬 Observaciones:</span>
+                                    <span style={{ color: '#334155' }}>{observaciones}</span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
 
                     {/* 3. CAJA CANTIDAD PREPARADA / TOTAL (ESTILO ORIGINAL AZUL) */}
                     <div

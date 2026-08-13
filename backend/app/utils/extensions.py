@@ -2,13 +2,9 @@ from flask_socketio import SocketIO
 from .ext.print_handler import PrintHandler
 from .ext.service_layer_handler import ServiceLayerHandler
 from .ext.error_handler import ErrorHandler
-from .ext.graph_api_handler import GraphAPIHandler
-from .ext.mail_sender import MailSender
 
 sl_handler = ServiceLayerHandler()
 err_handler = ErrorHandler()
-graph_handler = GraphAPIHandler()
-mail_sender = MailSender()
 print_handler = PrintHandler()
 
 # Instancia de WebSockets

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Row, Col, Input, Checkbox, Button, Card } from 'antd';
+import { Row, Col, Input, Checkbox, Button, Card, Space, Tooltip } from 'antd';
 import { SearchOutlined, ClearOutlined, EnvironmentOutlined } from '@ant-design/icons';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
@@ -32,91 +32,103 @@ export const StockSearchBar = ({ filters, onSearch, onReset, loading }) => {
   };
 
   return (
-    <Card className="sga-filter-panel" style={{ marginBottom: 20, borderRadius: 12 }}>
+    <Card
+      styles={{ body: { padding: '14px 18px' } }}
+      style={{
+        marginBottom: 20,
+        borderRadius: 12,
+        border: '1px solid #e2e8f0',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+        backgroundColor: '#ffffff'
+      }}
+    >
       <form onSubmit={formik.handleSubmit}>
         <Row gutter={[12, 12]} align="middle">
-          {/* Código o Descripción producto */}
-          <Col xs={24} sm={12} md={8} lg={8}>
+          {/* Buscar por Código / Nombre */}
+          <Col xs={24} sm={12} md={7} lg={7}>
             <Input
               name="itemcode"
-              placeholder="Código o Descripción producto..."
+              prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
+              placeholder="Buscar por código o nombre..."
               value={formik.values.itemcode}
               onChange={formik.handleChange}
               onPressEnter={formik.handleSubmit}
               allowClear
-              size="large"
-              style={{ borderRadius: 8 }}
+              style={{ borderRadius: 8, height: 38 }}
             />
           </Col>
 
-          {/* Ubicación o Almacén */}
-          <Col xs={24} sm={12} md={8} lg={8}>
+          {/* Buscar por Ubicación / Almacén */}
+          <Col xs={24} sm={12} md={6} lg={6}>
             <Input
               name="ubicacion"
-              prefix={<EnvironmentOutlined style={{ color: '#1677ff' }} />}
-              placeholder="Ubicación o Almacén (ej. A-01)"
+              prefix={<EnvironmentOutlined style={{ color: '#3b82f6' }} />}
+              placeholder="Ubicación / Almacén (ej. A-01)"
               value={formik.values.ubicacion}
               onChange={formik.handleChange}
               onPressEnter={formik.handleSubmit}
               allowClear
-              size="large"
-              style={{ borderRadius: 8 }}
+              style={{ borderRadius: 8, height: 38 }}
             />
           </Col>
 
-          {/* Checkbox solo con stock */}
-          <Col xs={24} sm={8} md={8} lg={8}>
-            <div style={{ padding: '4px 0' }}>
-              <Checkbox
-                name="con_stock"
-                checked={formik.values.con_stock}
-                onChange={(e) => formik.setFieldValue('con_stock', e.target.checked)}
-                style={{ fontSize: '0.9rem', fontWeight: 600 }}
+          {/* Checkbox Solo con stock */}
+          <Col xs={24} sm={12} md={5} lg={5}>
+            <Checkbox
+              name="con_stock"
+              checked={formik.values.con_stock}
+              onChange={(e) => {
+                formik.setFieldValue('con_stock', e.target.checked);
+                formik.handleSubmit();
+              }}
+              style={{ fontSize: '0.85rem', fontWeight: 600, color: '#334155' }}
+            >
+              Solo con stock
+            </Checkbox>
+          </Col>
+
+          {/* Botones Compactos Inline */}
+          <Col xs={24} sm={12} md={6} lg={6} style={{ textAlign: 'right' }}>
+            <Space size={8} wrap justify="end">
+              <Button
+                type="primary"
+                htmlType="submit"
+                icon={<SearchOutlined />}
+                loading={loading}
+                style={{
+                  borderRadius: 8,
+                  height: 38,
+                  padding: '0 18px',
+                  fontWeight: 700,
+                  backgroundColor: '#1677ff',
+                  border: 'none'
+                }}
               >
-                Solo con stock disponible
-              </Checkbox>
-            </div>
-          </Col>
+                Buscar
+              </Button>
 
-          {/* Botón Buscar - 1 Fila Completa en móviles/PDAs */}
-          <Col xs={24} sm={12}>
-            <Button
-              type="primary"
-              htmlType="submit"
-              icon={<SearchOutlined />}
-              loading={loading}
-              size="large"
-              block
-              style={{
-                backgroundColor: '#1677ff',
-                borderColor: '#1677ff',
-                fontWeight: 700,
-                borderRadius: 8,
-                height: 44
-              }}
-            >
-              Buscar
-            </Button>
-          </Col>
-
-          {/* Botón Limpiar - 1 Fila Completa en móviles/PDAs */}
-          <Col xs={24} sm={12}>
-            <Button
-              icon={<ClearOutlined />}
-              onClick={handleClear}
-              size="large"
-              block
-              style={{
-                fontWeight: 700,
-                borderRadius: 8,
-                height: 44
-              }}
-            >
-              Limpiar
-            </Button>
+              {(formik.values.itemcode || formik.values.ubicacion || formik.values.con_stock) && (
+                <Tooltip title="Limpiar filtros">
+                  <Button
+                    icon={<ClearOutlined />}
+                    onClick={handleClear}
+                    style={{
+                      borderRadius: 8,
+                      height: 38,
+                      fontWeight: 600,
+                      color: '#64748b'
+                    }}
+                  >
+                    Limpiar
+                  </Button>
+                </Tooltip>
+              )}
+            </Space>
           </Col>
         </Row>
       </form>
     </Card>
   );
 };
+
+export default StockSearchBar;

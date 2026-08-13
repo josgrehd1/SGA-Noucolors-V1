@@ -83,9 +83,9 @@ export const AlbaranesPage = () => {
         }}
       >
         <form onSubmit={filterFormik.handleSubmit}>
-          <Row gutter={[16, 16]} align="bottom">
-            <Col xs={24} sm={12} md={8}>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#6c757d', marginBottom: 4 }}>
+          <Row gutter={[12, 12]} align="top">
+            <Col xs={24} sm={12} md={9}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#475569', marginBottom: 6, height: 20, lineHeight: '20px' }}>
                 Num Albarán
               </label>
               <Input
@@ -95,11 +95,13 @@ export const AlbaranesPage = () => {
                 onChange={filterFormik.handleChange}
                 onPressEnter={filterFormik.handleSubmit}
                 allowClear
+                size="large"
+                style={{ borderRadius: 8 }}
               />
             </Col>
 
-            <Col xs={24} sm={12} md={8}>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#6c757d', marginBottom: 4 }}>
+            <Col xs={24} sm={12} md={9}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#475569', marginBottom: 6, height: 20, lineHeight: '20px' }}>
                 Cliente
               </label>
               <Input
@@ -109,21 +111,25 @@ export const AlbaranesPage = () => {
                 onChange={filterFormik.handleChange}
                 onPressEnter={filterFormik.handleSubmit}
                 allowClear
+                size="large"
+                style={{ borderRadius: 8 }}
               />
             </Col>
 
-            <Col xs={24} sm={24} md={8} style={{ textAlign: 'right' }}>
-              <Space>
+            <Col xs={24} sm={24} md={6} style={{ textAlign: 'right' }}>
+              <div style={{ height: 20, marginBottom: 6 }} />
+              <Space style={{ width: '100%', justify: 'end' }}>
                 <Button
                   type="primary"
                   htmlType="submit"
                   icon={<SearchOutlined />}
                   loading={loading}
-                  style={{ backgroundColor: '#0d6efd', borderColor: '#0d6efd', fontWeight: 600 }}
+                  size="large"
+                  style={{ backgroundColor: '#1677ff', borderColor: '#1677ff', fontWeight: 700, borderRadius: 8 }}
                 >
                   Buscar
                 </Button>
-                <Button icon={<ClearOutlined />} onClick={handleResetFilters} style={{ fontWeight: 600 }}>
+                <Button icon={<ClearOutlined />} onClick={handleResetFilters} size="large" style={{ fontWeight: 700, borderRadius: 8, color: '#64748b' }}>
                   Limpiar
                 </Button>
               </Space>

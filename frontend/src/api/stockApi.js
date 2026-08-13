@@ -7,6 +7,9 @@ export const stockApi = {
   getItemNecesidades: (itemCode) =>
     client.get(`/stock/${encodeURIComponent(itemCode)}/necesidades`),
 
+  getItemMovimientos: (itemCode) =>
+    client.get(`/stock/${encodeURIComponent(itemCode)}/movimientos`),
+
   searchBins: (term) =>
     client.get('/search/bins', { params: { term } }),
 

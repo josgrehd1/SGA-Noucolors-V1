@@ -124,12 +124,8 @@ class AlbaranService:
         series_name = ""
         if series_id:
             try:
-                series_res = SapRepository.get_data("Series", filter={"Series": int(series_id)})
-                if series_res.get('status') == 'ok' and series_res.get('data'):
-                    raw_s = series_res['data']
-                    s_data = raw_s[0] if isinstance(raw_s, list) and len(raw_s) > 0 else raw_s
-                    if isinstance(s_data, dict):
-                        series_name = s_data.get('Name') or s_data.get('SeriesName') or ""
+                s_info = SapSeriesMapper.get_series_info_by_id(series_id)
+                series_name = s_info.get('Name') or ""
             except Exception:
                 pass
 
@@ -363,6 +359,8 @@ class AlbaranService:
         res_series = SapSeriesMapper.resolve_series_by_user_or_order(doc_original, dst_obj_type=15)
         if res_series and res_series.get('dst_series_id'):
             albaran_payload['Series'] = int(res_series['dst_series_id'])
+        else:
+            albaran_payload.pop('Series', None)
 
 
         # Inyectar trazabilidad de operario para Acceso Indirecto

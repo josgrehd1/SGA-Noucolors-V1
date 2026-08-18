@@ -12,7 +12,9 @@ class AuthService:
 
     @staticmethod
     def login(username, password, company_db):
-        db_target = company_db or 'NouColors_D'
+        db_target = company_db
+        if not db_target:
+            return False, "Debe seleccionar una empresa/base de datos SAP al iniciar sesión."
         log.info(f"[Login] Usuario: {username} | Empresa seleccionada: {db_target}")
 
         # 1. Asegurar la sesión máster del Usuario Técnico (Acceso Indirecto)
@@ -45,6 +47,11 @@ class AuthService:
                     session['impresora'] = emp_info.get('U_BXPDfPrn', '')
                     session['sap_nivel'] = nivel
                     session['company_db'] = db_target
+                    try:
+                        from app.services.sap_sync_monitor import SapSyncMonitor
+                        SapSyncMonitor.register_active_db(db_target)
+                    except Exception:
+                        pass
                     log.info(f"[Login] ✅ Acceso Indirecto OK: {emp_info.get('FullName')} | Nivel: {nivel} (EmployeeID: {emp_info.get('EmployeeID')})")
                     return True, "Login correcto en SGA (Acceso Indirecto)"
             except Exception as e:
@@ -57,6 +64,11 @@ class AuthService:
             session['sap_username'] = username
             session['sap_password'] = password
             session['company_db'] = db_target
+            try:
+                from app.services.sap_sync_monitor import SapSyncMonitor
+                SapSyncMonitor.register_active_db(db_target)
+            except Exception:
+                pass
             
             try:
                 user_info = UserRepository.find_user_by_code(username)

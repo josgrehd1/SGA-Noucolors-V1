@@ -93,4 +93,9 @@ def create_app():
     from .routes.api import api_bp
     app.register_blueprint(api_bp)
 
+    # Iniciar Monitor en segundo plano para detección de nuevos pedidos en SAP (1 solo hilo global)
+    if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        from app.services.sap_sync_monitor import SapSyncMonitor
+        SapSyncMonitor.start_monitor(app, interval_seconds=20)
+
     return app

@@ -649,7 +649,6 @@ html, body {
   font-size: 0.8rem;
   padding: 3px 10px;
   border-radius: 20px;
-  cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -665,8 +664,7 @@ html, body {
   flex-direction: column;
   justify-content: space-between;
   border-radius: 14px !important;
-  border: 1px solid #f0f0f0 !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
 }
 
 .sga-doc-card-header {
@@ -1037,6 +1035,78 @@ html, body {
   height: 46px !important;
   border-radius: 8px !important;
   font-size: 1rem !important;
+}
+
+/* ==========================================================================
+   13. MEJORAS DE EXPERIENCIA DE USUARIO MÓVIL Y PDA (UI/UX Mobile & PDA)
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  /* Contenedores de tarjeta con espaciado amplio y respiración visual */
+  .sga-doc-card-container {
+    margin-bottom: 12px;
+    border-radius: 14px !important;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.06) !important;
+  }
+
+  /* Botones de acción táctiles grandes para dedos y guantes de almacén */
+  .sga-doc-action-bar {
+    padding-top: 14px !important;
+    gap: 8px !important;
+  }
+
+  .sga-doc-btn-gest,
+  .sga-doc-btn-det,
+  .sga-doc-btn-deact {
+    height: 42px !important;
+    font-size: 0.9rem !important;
+    font-weight: 800 !important;
+    border-radius: 8px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  /* Banners con mejor legibilidad */
+  .sga-doc-info-banner,
+  .sga-doc-comments-banner {
+    padding: 8px 12px !important;
+    font-size: 0.85rem !important;
+    line-height: 1.4 !important;
+    border-radius: 8px !important;
+  }
+
+  /* Bloque KPI espacioso */
+  .sga-doc-kpi-box {
+    padding: 6px 10px !important;
+    border-radius: 8px !important;
+  }
+
+  .sga-doc-kpi-values {
+    font-size: 1rem !important;
+  }
+
+  /* Modales responsive adaptados a pantalla completa móvil */
+  .ant-modal {
+    max-width: 96vw !important;
+    margin: 8px auto !important;
+    padding: 0 !important;
+  }
+
+  .ant-modal-content {
+    padding: 16px 12px !important;
+    border-radius: 16px !important;
+  }
+
+  .ant-modal-header {
+    margin-bottom: 12px !important;
+  }
+
+  /* Formularios de filtro con espacios limpios */
+  .sga-filter-bar-card {
+    padding: 14px 12px !important;
+    margin-bottom: 16px !important;
+  }
 }
 
 

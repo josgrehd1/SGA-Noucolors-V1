@@ -11,10 +11,10 @@ export const SocketProvider = ({ children }) => {
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    // Determinar la URL del servidor WebSocket (http://localhost:5000)
+    // Determinar la URL del servidor WebSocket (apunta al host actual o proxy)
     const socketUrl = import.meta.env.VITE_API_URL
       ? import.meta.env.VITE_API_URL.replace('/api', '')
-      : 'http://localhost:5000';
+      : window.location.origin;
 
     const newSocket = io(socketUrl, {
       transports: ['websocket', 'polling'],

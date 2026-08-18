@@ -28,7 +28,7 @@ class SapRepository:
         )
 
     @staticmethod
-    def get_data_from_view(view_name, filter=None, selection=None, orderby=None, order_direction=None, page=None, per_page=None, all_results=False):
+    def get_data_from_view(view_name, filter=None, selection=None, orderby=None, order_direction=None, page=None, per_page=None, all_results=False, master_session=None):
         """
         Consulta Vistas Analíticas de Microsoft SQL Server en SAP Service Layer.
         ej. NC_STOCK_UBICACION_B1SLQuery, NC_SGA_SOLICITUDES_CAB_B1SLQuery, etc.
@@ -41,7 +41,8 @@ class SapRepository:
             order_direction=order_direction,
             page=page,
             per_page=per_page,
-            all_results=all_results
+            all_results=all_results,
+            master_session=master_session
         )
 
     @staticmethod

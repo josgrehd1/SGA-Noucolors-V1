@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Modal, Card, Tag, Typography, Button, Row, Col, Space, Input, InputNumber, Select, Tooltip, Spin, Empty, message } from 'antd';
 import {
   SwapOutlined,
@@ -16,6 +16,7 @@ import {
   CommentOutlined
 } from '@ant-design/icons';
 import client from '../../utils/client';
+import { MultiBinDistributionModal } from './MultiBinDistributionModal';
 
 const { Text } = Typography;
 
@@ -50,11 +51,26 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
   const [selectedBins, setSelectedBins] = useState({});
   const [scannedItems, setScannedItems] = useState({});
 
-  // Modal para cambiar ubicación por defecto
-  const [binModalVisible, setBinModalVisible] = useState(false);
-  const [editingItem, setEditingItem] = useState(null);
-  const [newBinCode, setNewBinCode] = useState('');
-  const [savingBin, setSavingBin] = useState(false);
+  // Estado para Modal de Reparto Multi-Ubicación
+  const [multiBinModal, setMultiBinModal] = useState({
+    open: false,
+    idx: null,
+    line: null,
+    itemCode: '',
+    itemName: '',
+    totalQty: 0,
+    primaryBin: '',
+    primaryAvailable: 0,
+    allBinsWithStock: []
+  });
+
+  const hasChangesRef = useRef(false);
+
+  useEffect(() => {
+    if (open) {
+      hasChangesRef.current = false;
+    }
+  }, [open]);
 
   // Carga las líneas de detalle del pedido
   useEffect(() => {
@@ -69,31 +85,53 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
           client.get(`/docs/preparadas/${docEntry}`)
         ])
           .then(([resDetalle, resPrep]) => {
+            let loadedLines = [];
             if (resDetalle.status === 'ok' && Array.isArray(resDetalle.info) && resDetalle.info.length > 0) {
-              setDetailLines(resDetalle.info);
+              loadedLines = resDetalle.info;
             } else if (resDetalle.status === 'ok' && Array.isArray(resDetalle.lineas) && resDetalle.lineas.length > 0) {
-              setDetailLines(resDetalle.lineas);
+              loadedLines = resDetalle.lineas;
             } else if (Array.isArray(document.LINEAS) && document.LINEAS.length > 0) {
-              setDetailLines(document.LINEAS);
+              loadedLines = document.LINEAS;
             } else {
-              setDetailLines([]);
+              loadedLines = [];
             }
+            setDetailLines(loadedLines);
 
-            // Cargar estado de líneas preparadas
-            if (resPrep.status === 'ok' && Array.isArray(resPrep.lineas)) {
-              setLineasPreparadas(resPrep.lineas);
-              // Pre-rellenar cantidades con las ya confirmadas
-              const qtysFromPrep = {};
-              resPrep.lineas.forEach(lp => {
-                const lineNum = lp.U_PedidoLine;
-                if (lineNum !== undefined) {
-                  qtysFromPrep[lineNum] = (qtysFromPrep[lineNum] || 0) + (lp.U_Quantity || 0);
-                }
+            const prepList = (resPrep.status === 'ok' && Array.isArray(resPrep.lineas)) ? resPrep.lineas : [];
+            setLineasPreparadas(prepList);
+
+            // Pre-rellenar estados de confirmación para que persistan al salir y volver a entrar
+            const initialQtys = {};
+            const initialScanned = {};
+            const initialBins = {};
+
+            loadedLines.forEach((line, idx) => {
+              const lineNum = line.LINENUM ?? line.LINE_NUM ?? idx;
+              const itemCode = (line.ITEMCODE || '').trim().toUpperCase();
+
+              // Buscar si la línea ya fue confirmada previamente en SAP / NC_SGAWEB_DOCS
+              const prep = prepList.find(lp => {
+                const lpLine = lp.U_PedidoLine;
+                const lpItem = (lp.U_ItemCode || '').trim().toUpperCase();
+                return (
+                  (String(lpLine) === String(lineNum) || String(lpLine) === String(idx)) &&
+                  (lpItem === itemCode || !lpItem)
+                ) || (lpItem === itemCode && lpItem !== '');
               });
-              setPreparedQtys(prev => ({ ...prev, ...qtysFromPrep }));
-            } else {
-              setLineasPreparadas([]);
-            }
+
+              if (prep) {
+                initialQtys[idx] = prep.U_Quantity ?? line.CTD_PREPARADA ?? 0;
+                initialScanned[idx] = line.ITEMCODE || '';
+                initialBins[idx] = prep.U_BinFrom || '';
+              } else {
+                // Inicialmente siempre 0. El operario indica la cantidad o pulsa el icono del rayo ⚡ para autorellenar.
+                initialQtys[idx] = (line.CTD_PREPARADA && line.CTD_PREPARADA > 0) ? line.CTD_PREPARADA : 0;
+              }
+            });
+
+            setPreparedQtys(initialQtys);
+            setScannedItems(initialScanned);
+            setSelectedBins(initialBins);
           })
           .catch((err) => {
             console.error('Error al consultar detalle del pedido:', err);
@@ -110,12 +148,58 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
     } else {
       setDetailLines([]);
       setLineasPreparadas([]);
+      setPreparedQtys({});
+      setScannedItems({});
+      setSelectedBins({});
     }
   }, [open, document]);
 
   if (!document) return null;
 
   const lineas = detailLines.length > 0 ? detailLines : (document.LINEAS || []);
+
+  const getLinePreparedQty = (line, idx) => {
+    const lineNum = line.LINENUM ?? line.LINE_NUM ?? idx;
+    const itemCode = (line.ITEMCODE || '').trim().toUpperCase();
+    const matchingPreps = lineasPreparadas.filter(lp => {
+      const lpLine = lp.U_PedidoLine;
+      const lpItem = (lp.U_ItemCode || '').trim().toUpperCase();
+      return (
+        (String(lpLine) === String(lineNum) || String(lpLine) === String(idx)) &&
+        (lpItem === itemCode || !lpItem)
+      ) || (lpItem === itemCode && lpItem !== '');
+    });
+    if (matchingPreps.length > 0) {
+      return matchingPreps.reduce((sum, lp) => sum + (Number(lp.U_Quantity) || 0), 0);
+    }
+    return Number(line.CTD_PREPARADA) || 0;
+  };
+
+  // Línea confirmada al 100% solo si la cantidad preparada cubre el total pedido
+  const isLineFullyConfirmed = (line, idx) => {
+    const reqQty = Number(line.QUANTITY) || 0;
+    const prepQty = getLinePreparedQty(line, idx);
+    return reqQty > 0 && prepQty >= reqQty;
+  };
+
+  // Línea con alguna preparación
+  const isLineWithAnyPrep = (line, idx) => {
+    return getLinePreparedQty(line, idx) > 0;
+  };
+
+  const handleClose = () => {
+    if (hasChangesRef.current && onSuccess) {
+      onSuccess();
+    }
+    onClose();
+  };
+
+  const isAllConfirmed = lineas.length > 0 && lineas.every((line, idx) => isLineFullyConfirmed(line, idx));
+  const hasPartialPrep = lineas.some((line, idx) => isLineWithAnyPrep(line, idx)) && !isAllConfirmed;
+  const hasAnyConfirmed = lineas.some((line, idx) => {
+    const q = preparedQtys[idx] ?? 0;
+    return q > 0 || lineasPreparadas.some(lp => String(lp.U_PedidoLine) === String(line.LINENUM ?? idx) && Number(lp.U_Quantity) > 0);
+  });
 
   const handlePrintBultos = async () => {
     setPrintingBultos(true);
@@ -143,15 +227,16 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
     }
   };
 
-  const handleFinalizar = async () => {
+  const handleFinalizar = async (esParcial = false) => {
     setFinishing(true);
     try {
       const objType = document.OBJTYPE || '17';
-      const res = await client.post(`/finalizar-preparacion/${objType}/${document.DOCENTRY}`);
+      const url = `/finalizar-preparacion/${objType}/${document.DOCENTRY}${esParcial ? '?parcial=true' : ''}`;
+      const res = await client.post(url);
       if (res.status === 'ok' || res.message) {
-        message.success(res.message || `Preparación del pedido #${document.DOCNUM || document.DOCENTRY} finalizada con éxito en SAP`);
-        onClose();
-        if (onSuccess) onSuccess();
+        message.success(res.message || `Preparación ${esParcial ? 'parcial ' : ''}del pedido #${document.DOCNUM || document.DOCENTRY} finalizada con éxito en SAP (Albarán creado)`);
+        hasChangesRef.current = true;
+        handleClose();
       } else {
         message.error(res.message || 'Error al finalizar preparación del pedido');
       }
@@ -197,38 +282,6 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
     }));
   };
 
-  const handleOpenChangeBinModal = (line) => {
-    setEditingItem(line);
-    setNewBinCode(line.BIN_STD || '');
-    setBinModalVisible(true);
-  };
-
-  const handleSaveDefaultBin = async () => {
-    if (!editingItem || !newBinCode.trim()) {
-      message.warning('Ingrese un código de ubicación válido');
-      return;
-    }
-    setSavingBin(true);
-    try {
-      const res = await client.post('/docs/change-default-bin', {
-        whscode: editingItem.WHSCODE || '01',
-        itemcode: editingItem.ITEMCODE,
-        new_bin: newBinCode.trim()
-      });
-      if (res.status === 'ok') {
-        message.success(`Ubicación por defecto actualizada a ${newBinCode}`);
-        editingItem.BIN_STD = newBinCode.trim();
-        setBinModalVisible(false);
-      } else {
-        message.error(res.message || 'Error actualizando ubicación por defecto');
-      }
-    } catch (err) {
-      message.error(err.message || 'Error al guardar la ubicación por defecto');
-    } finally {
-      setSavingBin(false);
-    }
-  };
-
   const handleConfirmLine = async (idx, line) => {
     const scanned = scannedItems[idx] || '';
     const targetBin = selectedBins[idx] || null;
@@ -247,6 +300,43 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
     // Ubicación obligatoria — el operario debe seleccionarla
     if (!targetBin || !targetBin.trim()) {
       message.error(`Debes seleccionar una ubicación para confirmar la línea ${line.ITEMCODE}`);
+      return;
+    }
+
+    // Parsear lista de ubicaciones con existencias para este artículo
+    let ubisList = [];
+    if (Array.isArray(line.UBICACIONES)) {
+      ubisList = line.UBICACIONES;
+    } else if (typeof line.UBICACIONES === 'string') {
+      try {
+        ubisList = JSON.parse(line.UBICACIONES);
+      } catch (e) {
+        ubisList = [];
+      }
+    }
+
+    const primaryUbiObj = ubisList.find(u => getBinCode(u) === targetBin);
+    const primaryAvailable = primaryUbiObj ? getBinQty(primaryUbiObj) : 0;
+
+    // Si la cantidad a preparar supera el stock disponible en la ubicación seleccionada y hay más ubicaciones con stock
+    if (qty > primaryAvailable && ubisList.length > 1) {
+      const formattedBins = ubisList.map(u => ({
+        bincode: getBinCode(u),
+        onhandqty: getBinQty(u),
+        binabs: u.binabs || u.BinAbs
+      }));
+
+      setMultiBinModal({
+        open: true,
+        idx,
+        line,
+        itemCode: line.ITEMCODE,
+        itemName: line.ITEMNAME || '',
+        totalQty: qty,
+        primaryBin: targetBin,
+        primaryAvailable: primaryAvailable,
+        allBinsWithStock: formattedBins
+      });
       return;
     }
 
@@ -289,7 +379,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
             setLineasPreparadas(resPrep.lineas);
           }
         }).catch(() => {});
-        if (onSuccess) onSuccess();
+        hasChangesRef.current = true;
       } else {
         message.error(res.message || 'Error registrando movimiento de stock');
       }
@@ -298,9 +388,63 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
     }
   };
 
+  const handleMultiBinConfirm = async (allocations) => {
+    const { idx, line, totalQty } = multiBinModal;
+    if (!line) return;
+
+    try {
+      const payload = {
+        U_ItemCode: line.ITEMCODE,
+        U_BinFrom: allocations[0]?.bincode || '',
+        U_Quantity: totalQty,
+        U_PedidoEntry: document.DOCENTRY || document.DOCNUM,
+        U_PedidoLine: line.LINENUM ?? line.LINE_NUM ?? idx,
+        U_ObjType: String(document.OBJTYPE || '17'),
+        U_Estado: 'O',
+        U_BinAllocations: allocations
+      };
+
+      const res = await client.post('/confirmar-mov-stock', payload);
+      if (res.status === 'ok') {
+        const binSummary = allocations.map(a => `${a.quantity} u. en ${a.bincode}`).join(' + ');
+        message.success(`Reparto multi-ubicación registrado para ${line.ITEMCODE} (${binSummary})`);
+
+        // Actualizar estado local
+        const lineNum = line.LINENUM ?? line.LINE_NUM ?? idx;
+        const newPrepLine = {
+          U_PedidoEntry: document.DOCENTRY || document.DOCNUM,
+          U_PedidoLine: lineNum,
+          U_ItemCode: line.ITEMCODE,
+          U_Quantity: totalQty,
+          U_BinFrom: allocations[0]?.bincode || '',
+          U_Estado: 'O'
+        };
+        setLineasPreparadas(prev => {
+          const filtered = prev.filter(lp =>
+            !(String(lp.U_PedidoLine) === String(lineNum) &&
+              (lp.U_ItemCode || '').toUpperCase() === (line.ITEMCODE || '').toUpperCase())
+          );
+          return [...filtered, newPrepLine];
+        });
+
+        // Recargar del backend
+        const docEntry = document.DOCENTRY || document.DOCNUM;
+        client.get(`/docs/preparadas/${docEntry}`).then(resPrep => {
+          if (resPrep.status === 'ok' && Array.isArray(resPrep.lineas) && resPrep.lineas.length > 0) {
+            setLineasPreparadas(resPrep.lineas);
+          }
+        }).catch(() => {});
+        hasChangesRef.current = true;
+      } else {
+        message.error(res.message || 'Error registrando reparto multi-ubicación');
+      }
+    } catch (err) {
+      message.error(err.message || 'Error en comunicación con SAP');
+    }
+  };
+
   return (
-    <>
-      <Modal
+    <Modal
         title={
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingBottom: 6 }}>
             {/* Título Exacto Proyecto Original: Detalle Pedido {DOCNUM} ({CARDNAME}) */}
@@ -308,7 +452,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
               Detalle Pedido {document.DOCNUM || document.DOCENTRY} ({document.CARDNAME || 'Sin Asignar'})
             </div>
 
-            {/* Barra de Acciones del Encabezado (Num Bultos, Imp, Semi, Finalizar, Volver) */}
+            {/* Barra de Acciones del Encabezado (Num Bultos, Imp, Semi, Finalizar / Entrega Parcial, Volver) */}
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 8 }}>
               {/* Input Num Bultos + Botón Imp */}
               <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -324,7 +468,8 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                       borderRadius: '6px 0 0 6px',
                       padding: '4px 8px',
                       fontSize: 13,
-                      color: '#6c757d'
+                      color: '#6c757d',
+                      fontWeight: 600
                     }}
                   >
                     📦
@@ -374,27 +519,52 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                 Semi
               </Button>
 
-              {/* Botón Finalizar */}
-              <Button
-                type="primary"
-                icon={<CheckCircleOutlined />}
-                loading={finishing}
-                onClick={handleFinalizar}
-                style={{
-                  backgroundColor: '#198754',
-                  borderColor: '#198754',
-                  color: '#fff',
-                  fontWeight: 700,
-                  borderRadius: 6
-                }}
-              >
-                Finalizar
-              </Button>
+              {/* Botón Entrega Parcial (para pedidos semi-preparados o con líneas confirmadas) */}
+              {!isAllConfirmed && (hasPartialPrep || hasAnyConfirmed) && (
+                <Tooltip title="Generar albarán de entrega parcial en SAP solo con las líneas confirmadas">
+                  <Button
+                    type="primary"
+                    icon={<CheckCircleOutlined />}
+                    loading={finishing}
+                    onClick={() => handleFinalizar(true)}
+                    style={{
+                      backgroundColor: '#f97316',
+                      borderColor: '#f97316',
+                      color: '#fff',
+                      fontWeight: 700,
+                      borderRadius: 6
+                    }}
+                  >
+                    Entrega Parcial
+                  </Button>
+                </Tooltip>
+              )}
+
+              {/* Botón Finalizar Completo (100%) */}
+              <Tooltip title={!isAllConfirmed ? "Debes confirmar todas las líneas al 100% para finalizar completamente" : "Generar albarán de entrega completo en SAP"}>
+                <Button
+                  type="primary"
+                  icon={<CheckCircleOutlined />}
+                  loading={finishing}
+                  onClick={() => handleFinalizar(false)}
+                  disabled={!isAllConfirmed}
+                  style={{
+                    backgroundColor: isAllConfirmed ? '#198754' : '#e5e7eb',
+                    borderColor: isAllConfirmed ? '#198754' : '#d1d5db',
+                    color: isAllConfirmed ? '#fff' : '#9ca3af',
+                    fontWeight: 700,
+                    borderRadius: 6,
+                    cursor: isAllConfirmed ? 'pointer' : 'not-allowed'
+                  }}
+                >
+                  Finalizar
+                </Button>
+              </Tooltip>
 
               {/* Botón Volver */}
               <Button
                 icon={<ArrowLeftOutlined />}
-                onClick={onClose}
+                onClick={handleClose}
                 style={{
                   borderColor: '#0d6efd',
                   color: '#0d6efd',
@@ -408,7 +578,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
           </div>
         }
         open={open}
-        onCancel={onClose}
+        onCancel={handleClose}
         width={780}
         footer={null}
         styles={{ body: { padding: '16px' } }}
@@ -416,8 +586,8 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
         {/* ── BARRA DE PROGRESO DE PREPARACIÓN ── */}
         {lineas.length > 0 && (
           <div style={{
-            backgroundColor: lineasPreparadas.length === lineas.length ? '#d1fae5' : '#fff7ed',
-            border: `1px solid ${lineasPreparadas.length === lineas.length ? '#6ee7b7' : '#fed7aa'}`,
+            backgroundColor: isAllConfirmed ? '#d1fae5' : (hasPartialPrep ? '#fffbeb' : '#fff7ed'),
+            border: `1px solid ${isAllConfirmed ? '#6ee7b7' : (hasPartialPrep ? '#fcd34d' : '#fed7aa')}`,
             borderRadius: 8,
             padding: '8px 16px',
             marginBottom: 12,
@@ -425,10 +595,12 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
             alignItems: 'center',
             justifyContent: 'space-between'
           }}>
-            <span style={{ fontWeight: 700, fontSize: '0.9rem', color: lineasPreparadas.length === lineas.length ? '#065f46' : '#92400e' }}>
-              {lineasPreparadas.length === lineas.length
-                ? `✅ Todas las líneas confirmadas (${lineas.length}/${lineas.length})`
-                : `📦 ${lineasPreparadas.length} de ${lineas.length} líneas confirmadas`
+            <span style={{ fontWeight: 700, fontSize: '0.9rem', color: isAllConfirmed ? '#065f46' : (hasPartialPrep ? '#b45309' : '#92400e') }}>
+              {isAllConfirmed
+                ? `✅ Todas las líneas confirmadas al 100% (${lineas.length}/${lineas.length}) - Listo para Finalizar`
+                : hasPartialPrep
+                  ? `🟠 Pedido Semi-Preparado / En Curso (${lineas.filter((l, i) => isLineFullyConfirmed(l, i)).length} de ${lineas.length} líneas completas)`
+                  : `📦 0 de ${lineas.length} líneas confirmadas (Completa la preparación para habilitar Finalizar)`
               }
             </span>
           </div>
@@ -447,19 +619,16 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
             <Row gutter={[16, 16]}>
               {lineas.map((line, idx) => {
               const total = line.QUANTITY || 0;
-              const preparada = preparedQtys[idx] ?? (line.CTD_PREPARADA || 0);
               const isStockOk = String(line.STOCK_OK || '').toUpperCase() === 'OK';
               const defaultBin = line.BIN_STD || 'Sin Ubi';
               const whsCode = line.WHSCODE || '01';
 
               // Verificar si la línea ya tiene preparación confirmada
-              const lineNum = line.LINENUM ?? line.LINE_NUM ?? idx;
-              const linePreparada = lineasPreparadas.find(lp =>
-                String(lp.U_PedidoLine) === String(lineNum) &&
-                (lp.U_ItemCode || '').toUpperCase() === (line.ITEMCODE || '').toUpperCase()
-              );
-              const isLineConfirmed = !!linePreparada;
-              const ctdConfirmada = linePreparada ? linePreparada.U_Quantity : 0;
+              const ctdConfirmada = getLinePreparedQty(line, idx);
+              const preparada = preparedQtys[idx] ?? (ctdConfirmada > 0 ? ctdConfirmada : total);
+              const isLineComplete = isLineFullyConfirmed(line, idx);
+              const isLinePartial = isLineWithAnyPrep(line, idx) && !isLineComplete;
+              const isLineConfirmed = isLineComplete || isLinePartial;
 
               let ubisList = [];
               if (Array.isArray(line.UBICACIONES)) {
@@ -497,11 +666,11 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                     styles={{ body: { padding: 16 } }}
                     style={{
                       borderRadius: 14,
-                      border: `1px solid ${isLineConfirmed ? '#6ee7b7' : '#e5e7eb'}`,
-                      borderTop: `4px solid ${isLineConfirmed ? '#10b981' : isStockOk ? '#0d6efd' : '#dc3545'}`,
-                      boxShadow: isLineConfirmed ? '0 4px 12px rgba(16, 185, 129, 0.12)' : '0 4px 12px rgba(0, 0, 0, 0.05)',
+                      border: `1px solid ${isLineComplete ? '#6ee7b7' : isLinePartial ? '#fcd34d' : '#e5e7eb'}`,
+                      borderTop: `4px solid ${isLineComplete ? '#10b981' : isLinePartial ? '#f59e0b' : isStockOk ? '#0d6efd' : '#dc3545'}`,
+                      boxShadow: isLineComplete ? '0 4px 12px rgba(16, 185, 129, 0.12)' : isLinePartial ? '0 4px 12px rgba(245, 158, 11, 0.12)' : '0 4px 12px rgba(0, 0, 0, 0.05)',
                       height: '100%',
-                      backgroundColor: isLineConfirmed ? '#f0fdf4' : '#ffffff'
+                      backgroundColor: isLineComplete ? '#f0fdf4' : isLinePartial ? '#fffdf5' : '#ffffff'
                     }}
                   >
                     {/* 1. BADGES DE ENCABEZADO (ITEMCODE | Alm | Ubi Defecto Edit | Estado) */}
@@ -515,18 +684,30 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                           <ShopOutlined style={{ marginRight: 4 }} /> Alm: {whsCode}
                         </span>
 
-                        <span
-                          className="sga-badge-bin-default"
-                          onClick={() => handleOpenChangeBinModal(line)}
-                        >
-                          <EnvironmentOutlined /> {defaultBin} <EditOutlined style={{ fontSize: '0.75rem' }} />
+                        <span className="sga-badge-bin-default" title="Ubicación por defecto en SAP (Informativo)">
+                          <EnvironmentOutlined /> {defaultBin}
                         </span>
                       </div>
 
-                      {/* Badge de estado: Confirmada / Pendiente */}
-                      {isLineConfirmed ? (
+                      {/* Badge de estado: Confirmada Completa / Semi-Preparada / Pendiente */}
+                      {isLineComplete ? (
                         <span className="sga-badge-confirmed">
                           <CheckCircleFilled style={{ fontSize: 13 }} /> Confirmada {ctdConfirmada} ud.
+                        </span>
+                      ) : isLinePartial ? (
+                        <span style={{
+                          backgroundColor: '#fef3c7',
+                          color: '#b45309',
+                          border: '1px solid #fcd34d',
+                          borderRadius: 6,
+                          padding: '2px 8px',
+                          fontWeight: 800,
+                          fontSize: '0.78rem',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4
+                        }}>
+                          <CheckCircleFilled style={{ fontSize: 13, color: '#f59e0b' }} /> Semi-Prep ({ctdConfirmada}/{total} ud.)
                         </span>
                       ) : (
                         <span className="sga-badge-pending">
@@ -750,14 +931,21 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
 
                     {/* 7. BOTÓN CONFIRMAR LÍNEA */}
                     <Button
-                      type="primary"
+                      type={isLineConfirmed ? "default" : "primary"}
                       icon={<CheckOutlined />}
                       onClick={() => handleConfirmLine(idx, line)}
                       block
                       size="large"
-                      className="sga-btn-confirm-line"
+                      className={isLineConfirmed ? "sga-btn-confirm-line-confirmed" : "sga-btn-confirm-line"}
+                      style={isLineConfirmed ? {
+                        backgroundColor: '#10b981',
+                        borderColor: '#10b981',
+                        color: '#ffffff',
+                        fontWeight: 700,
+                        borderRadius: 8
+                      } : undefined}
                     >
-                      Confirmar
+                      {isLineConfirmed ? '✅ Línea Confirmada (Guardar cambios)' : 'Confirmar'}
                     </Button>
                   </Card>
                 </Col>
@@ -766,47 +954,19 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
           </Row>
           )}
         </div>
-      </Modal>
 
-      {/* ── MODAL CAMBIAR UBICACIÓN POR DEFECTO ── */}
-      <Modal
-        title="Nueva Ubicación por Defecto"
-        open={binModalVisible}
-        onCancel={() => setBinModalVisible(false)}
-        footer={[
-          <Button key="cancel" onClick={() => setBinModalVisible(false)}>
-            Cancelar
-          </Button>,
-          <Button
-            key="save"
-            type="primary"
-            loading={savingBin}
-            onClick={handleSaveDefaultBin}
-            style={{ backgroundColor: '#0d6efd', borderColor: '#0d6efd' }}
-          >
-            Guardar Cambios
-          </Button>
-        ]}
-      >
-        {editingItem && (
-          <div>
-            <p style={{ fontSize: '0.88rem', color: '#6c757d', marginBottom: 16 }}>
-              Vas a cambiar la ubicación por defecto del artículo <strong>{editingItem.ITEMNAME}</strong> en el almacén <strong>{editingItem.WHSCODE || '01'}</strong>.
-            </p>
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: 4 }}>
-                Código de la Nueva Ubicación
-              </label>
-              <Input
-                placeholder="Ej: 01-10-19-01-02"
-                value={newBinCode}
-                onChange={(e) => setNewBinCode(e.target.value)}
-                size="large"
-              />
-            </div>
-          </div>
-        )}
+        {/* Modal Interactivo de Reparto Multi-Ubicación */}
+        <MultiBinDistributionModal
+          open={multiBinModal.open}
+          onClose={() => setMultiBinModal(prev => ({ ...prev, open: false }))}
+          itemCode={multiBinModal.itemCode}
+          itemName={multiBinModal.itemName}
+          totalQty={multiBinModal.totalQty}
+          primaryBin={multiBinModal.primaryBin}
+          primaryAvailable={multiBinModal.primaryAvailable}
+          allBinsWithStock={multiBinModal.allBinsWithStock}
+          onConfirm={handleMultiBinConfirm}
+        />
       </Modal>
-    </>
   );
 };

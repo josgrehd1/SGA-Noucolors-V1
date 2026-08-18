@@ -260,26 +260,40 @@ class AlbaranService:
         ubicaciones = list({d[clave] for d in lineas for clave in (fld_bin_from, fld_bin_to) if clave in d and d[clave]})
         mapping_ubi = StockService.get_id_ubicaciones(lista_ubicaciones=ubicaciones)
 
+        doc_original_lines_map = {line['LineNum']: line for line in doc_original.get('DocumentLines', []) if 'LineNum' in line}
+
         lineas_agrupadas = {}
-        for l in lineas:
+        for idx, l in enumerate(lineas):
             qty = float(l.get('U_Quantity', 0) or 0)
-            if qty > 0:
-                key = (l.get('U_PedidoEntry'), l.get('U_PedidoLine'), l.get('U_ItemCode'))
-                if key not in lineas_agrupadas:
-                    lineas_agrupadas[key] = copy.deepcopy(l)
-                    lineas_agrupadas[key]['U_Quantity'] = qty
-                else:
-                    lineas_agrupadas[key]['U_Quantity'] += qty
+            if qty <= 0:
+                continue
+
+            p_line = int(l.get('U_PedidoLine', idx))
+            item_code_val = l.get('U_ItemCode')
+            if p_line not in doc_original_lines_map and item_code_val:
+                orig = next((line for line in doc_original.get('DocumentLines', []) if line.get('ItemCode') == item_code_val and line.get('LineStatus') != 'bost_Close'), None)
+                if orig and 'LineNum' in orig:
+                    p_line = int(orig['LineNum'])
+
+            l['U_PedidoLine'] = p_line
+            key = (l.get('U_PedidoEntry'), p_line, item_code_val)
+            if key not in lineas_agrupadas:
+                lineas_agrupadas[key] = copy.deepcopy(l)
+                lineas_agrupadas[key]['U_Quantity'] = qty
+                lineas_agrupadas[key]['_allocations'] = [copy.deepcopy(l)]
+            else:
+                lineas_agrupadas[key]['U_Quantity'] += qty
+                lineas_agrupadas[key]['_allocations'].append(copy.deepcopy(l))
 
         lineas = list(lineas_agrupadas.values())
         albaran_payload = {}
         payload_lines = []
 
-        doc_original_lines_map = {line['LineNum']: line for line in doc_original.get('DocumentLines', []) if 'LineNum' in line}
-
-        for linea in lineas:
-            pedido_line_num = int(linea.get('U_PedidoLine'))
+        for idx, linea in enumerate(lineas):
+            pedido_line_num = int(linea.get('U_PedidoLine', idx))
+            item_code_val = linea.get('U_ItemCode')
             original_line = doc_original_lines_map.get(pedido_line_num, {})
+
             ctd_preparada = float(linea.get('U_Quantity', 0) or 0)
             if ctd_preparada <= 0:
                 continue
@@ -315,15 +329,90 @@ class AlbaranService:
             bin_payload = []
             dist_num = linea.get('dist_number') or linea.get('U_DistNumber') or linea.get('serial_number') or linea.get('batch_number')
 
-            if bin_def and ctd_preparada > 0:
-                allocation = {
-                    "BinAbsEntry": int(bin_def),
-                    "Quantity": float(ctd_preparada),
-                    "BinActionType": "batFromWarehouse"
-                }
-                if dist_num:
-                    allocation["SerialAndBatchNumbersBaseLine"] = 0
-                bin_payload = [allocation]
+            # Si la línea contiene repartos multi-ubicación explícitos guardados por el usuario
+            allocations_list = linea.get('_allocations', [linea])
+            if len(allocations_list) > 1:
+                for alloc_entry in allocations_list:
+                    a_bin_code = alloc_entry.get('U_BinFrom') or alloc_entry.get('U_BinTo')
+                    a_qty = float(alloc_entry.get('U_Quantity', 0) or 0)
+                    a_abs = mapping_ubi.get(a_bin_code)
+                    if a_abs and a_qty > 0:
+                        alloc_item = {
+                            "BinAbsEntry": int(a_abs),
+                            "Quantity": a_qty,
+                            "BaseLineNumber": len(payload_lines)
+                        }
+                        if dist_num:
+                            alloc_item["SerialAndBatchNumbersBaseLine"] = 0
+                        bin_payload.append(alloc_item)
+            elif bin_def and ctd_preparada > 0:
+                # Consultar stock por ubicaciones para este artículo en almacén 01
+                res_stock_all = SapRepository.get_data_from_view(
+                    view_name="NC_STOCK_UBICACION_B1SLQuery",
+                    filter={"ItemCode": item_code_val, "WhsCode": bin_whs or '01'},
+                    all_results=True
+                )
+                stock_by_bin = {}
+                if res_stock_all.get('status') == 'ok' and res_stock_all.get('data'):
+                    for row_st in res_stock_all['data']:
+                        b_abs = row_st.get('BinAbs')
+                        b_qty = float(row_st.get('BINQTY', 0) or 0)
+                        if b_abs and b_qty > 0:
+                            stock_by_bin[int(b_abs)] = stock_by_bin.get(int(b_abs), 0) + b_qty
+
+                qty_needed = float(ctd_preparada)
+                primary_abs = int(bin_def)
+                primary_available = stock_by_bin.get(primary_abs, 0)
+
+                if primary_available >= qty_needed or not stock_by_bin:
+                    # La ubicación seleccionada cubre la totalidad
+                    alloc = {
+                        "BinAbsEntry": primary_abs,
+                        "Quantity": qty_needed,
+                        "BaseLineNumber": len(payload_lines)
+                    }
+                    if dist_num:
+                        alloc["SerialAndBatchNumbersBaseLine"] = 0
+                    bin_payload = [alloc]
+                else:
+                    # Repartir entre la ubicación elegida (ej. 01-PDTE) y el resto de estanterías con stock
+                    allocated_so_far = 0.0
+                    if primary_available > 0:
+                        alloc = {
+                            "BinAbsEntry": primary_abs,
+                            "Quantity": primary_available,
+                            "BaseLineNumber": len(payload_lines)
+                        }
+                        if dist_num:
+                            alloc["SerialAndBatchNumbersBaseLine"] = 0
+                        bin_payload.append(alloc)
+                        allocated_so_far += primary_available
+
+                    rem_needed = qty_needed - allocated_so_far
+                    for other_abs, other_qty in stock_by_bin.items():
+                        if other_abs == primary_abs or other_qty <= 0:
+                            continue
+                        take_qty = min(rem_needed, other_qty)
+                        if take_qty > 0:
+                            alloc_extra = {
+                                "BinAbsEntry": other_abs,
+                                "Quantity": take_qty,
+                                "BaseLineNumber": len(payload_lines)
+                            }
+                            if dist_num:
+                                alloc_extra["SerialAndBatchNumbersBaseLine"] = 0
+                            bin_payload.append(alloc_extra)
+                            rem_needed -= take_qty
+                            if rem_needed <= 0:
+                                break
+
+                    # Si no se pudo cubrir con las ubicaciones registradas, asegurar que la suma coincida
+                    if not bin_payload:
+                        bin_payload = [{
+                            "BinAbsEntry": primary_abs,
+                            "Quantity": qty_needed,
+                            "BaseLineNumber": len(payload_lines)
+                        }]
 
             nueva_linea = {
                 'ItemCode': original_line.get('ItemCode') or linea.get('U_ItemCode'),
@@ -335,6 +424,10 @@ class AlbaranService:
 
             if bin_whs:
                 nueva_linea['WarehouseCode'] = bin_whs
+
+            # Asignar ubicación obligatoria para almacenes con gestión de ubicaciones en SAP (ej. Alm 01)
+            if bin_payload:
+                nueva_linea['DocumentLinesBinAllocations'] = bin_payload
 
             # Si el artículo tiene gestión por número de serie, incluir SerialNumbers
             if dist_num:

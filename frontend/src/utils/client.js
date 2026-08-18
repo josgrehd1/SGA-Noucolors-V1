@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Cliente HTTP Axios configurado para comunicar el frontend React con la API Flask unificada
 const client = axios.create({
-  baseURL: '/api',
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',

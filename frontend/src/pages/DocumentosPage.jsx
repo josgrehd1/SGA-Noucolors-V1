@@ -147,7 +147,13 @@ export const DocumentosPage = () => {
     if (!socket) return;
 
     const handleSapUpdate = (data) => {
-      console.log('[WebSocket Event Received] Actualizando vista de documentos...', data);
+      // Si el usuario tiene un modal abierto trabajando, no recargar el fondo para evitar parpadeos
+      if (selectedDetailDoc || selectedSemiPrepareDoc) {
+        return;
+      }
+      if (data?.type === 'sap_new_order') {
+        message.info('🔄 Actualización detectada en SAP: Recargando lista de pedidos...');
+      }
       fetchDocuments(objType, page, filterFormik.values);
     };
 
@@ -155,7 +161,7 @@ export const DocumentosPage = () => {
     return () => {
       socket.off('sap_update', handleSapUpdate);
     };
-  }, [socket, objType, page, filterFormik.values]);
+  }, [socket, objType, page, filterFormik.values, selectedDetailDoc, selectedSemiPrepareDoc]);
 
   const fetchDocuments = async (targetObjType, targetPage = 1, currentFilters = filterFormik.values) => {
     setLoading(true);
@@ -168,9 +174,85 @@ export const DocumentosPage = () => {
         tipo_venta: currentFilters.tipo_venta,
         ver_inactivos: location.state?.verInactivos ? 'true' : 'false'
       };
+
       const res = await client.get(`/docs/${targetObjType}`, { params });
+
       if (res.status === 'ok') {
         let fetchedDocs = res.pedidos || [];
+
+        // Consultar el estado de preparación exacto de los pedidos mostrados en pantalla mediante batch
+        const allDocEntries = [];
+        const allDocNums = [];
+        fetchedDocs.forEach(d => {
+          if (d.DOCENTRY) allDocEntries.push(d.DOCENTRY);
+          if (d.DOCNUM) allDocNums.push(d.DOCNUM);
+        });
+
+        if (allDocEntries.length > 0) {
+          try {
+            const resBatch = await client.post('/docs/preparadas/batch', {
+              docentries: allDocEntries,
+              docnums: allDocNums
+            });
+
+            if (resBatch.status === 'ok' && resBatch.preparadas_por_doc) {
+              const prepMap = resBatch.preparadas_por_doc;
+
+              fetchedDocs = fetchedDocs.map(doc => {
+                const de = String(doc.DOCENTRY || '').trim();
+                const dn = String(doc.DOCNUM || '').trim();
+                const docPreps = prepMap[de] || prepMap[dn] || [];
+
+                if (docPreps.length > 0) {
+                  const hasSemi = docPreps.some(p => p.U_Semi === 'Y') || docPreps.length > 0;
+                  const prepQtyByLine = {};
+                  docPreps.forEach(p => {
+                    const key = `${p.U_PedidoLine}_${(p.U_ItemCode || '').trim().toUpperCase()}`;
+                    prepQtyByLine[key] = (prepQtyByLine[key] || 0) + (Number(p.U_Quantity) || 0);
+                  });
+
+                  const lines = doc.LINEAS || doc.DocumentLines || [];
+                  let fullyPrepCount = 0;
+                  let partiallyPrepCount = 0;
+
+                  lines.forEach((l, idx) => {
+                    const lNum = l.LINENUM ?? l.LINE_NUM ?? l.LineNum ?? idx;
+                    const lItem = (l.ITEMCODE || l.ItemCode || '').trim().toUpperCase();
+                    const reqQ = Number(l.QUANTITY || l.Quantity || 0);
+                    const key = `${lNum}_${lItem}`;
+                    let prepQ = prepQtyByLine[key] || 0;
+                    if (prepQ === 0) {
+                      prepQ = Object.entries(prepQtyByLine)
+                        .filter(([k]) => k.endsWith(`_${lItem}`))
+                        .reduce((sum, [, v]) => sum + v, 0);
+                    }
+
+                    if (reqQ > 0 && prepQ >= reqQ) {
+                      fullyPrepCount += 1;
+                    } else if (prepQ > 0) {
+                      partiallyPrepCount += 1;
+                    }
+                  });
+
+                  const totalLines = lines.length;
+                  const isSemiPrep = hasSemi || partiallyPrepCount > 0 || (fullyPrepCount > 0 && fullyPrepCount < totalLines) || (fullyPrepCount === 0 && docPreps.length > 0);
+                  const isFullPrep = !isSemiPrep && fullyPrepCount === totalLines && totalLines > 0 && partiallyPrepCount === 0;
+
+                  return {
+                    ...doc,
+                    IS_SEMI_PREPARADO: isSemiPrep,
+                    IS_COMPLETAMENTE_PREPARADO: isFullPrep,
+                    CUENTA_PREPARADO: fullyPrepCount,
+                    SGA_PREPARADAS: docPreps
+                  };
+                }
+                return doc;
+              });
+            }
+          } catch (batchErr) {
+            console.error('Error fetching batch preparadas:', batchErr);
+          }
+        }
 
         const clientTerm = (currentFilters.cliente || '').trim().toLowerCase();
         const docnumTerm = (currentFilters.search_docnum || '').replace('#', '').trim().toLowerCase();
@@ -189,8 +271,8 @@ export const DocumentosPage = () => {
             const matchClient = !clientTerm || cardNameStr.includes(clientTerm) || cardCodeStr.includes(clientTerm);
             const matchTipo = !tipoTerm || tipoStr.includes(tipoTerm);
             const matchEstado = !estadoPrepTerm ||
-              (estadoPrepTerm === 'en_preparacion' && gestionadas > 0) ||
-              (estadoPrepTerm === 'sin_iniciar' && gestionadas === 0);
+              (estadoPrepTerm === 'en_preparacion' && (gestionadas > 0 || doc.IS_SEMI_PREPARADO)) ||
+              (estadoPrepTerm === 'sin_iniciar' && gestionadas === 0 && !doc.IS_SEMI_PREPARADO);
 
             return matchDocnum && matchClient && matchTipo && matchEstado;
           });
@@ -377,8 +459,70 @@ export const DocumentosPage = () => {
         onDeactivateDocument={handleDeactivateDocument}
       />
 
+      {/* ── LEYENDA DE COLORES EN EL FOOTER ── */}
+      <div
+        style={{
+          marginTop: 24,
+          padding: '14px 20px',
+          background: '#ffffff',
+          borderRadius: 12,
+          border: '1px solid #e2e8f0',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.03)'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              🎨 Leyenda de Estados:
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+            {/* Azul - Disponible */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 14, height: 14, borderRadius: 4, backgroundColor: '#0d6efd', boxShadow: '0 0 0 2px #9ec5fe' }} />
+              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b' }}>
+                <strong>🔵 Azul:</strong> Stock Disponible (Sin Iniciar)
+              </span>
+            </div>
+
+            {/* Naranja - Stock Parcial */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 14, height: 14, borderRadius: 4, backgroundColor: '#f97316', boxShadow: '0 0 0 2px #fed7aa' }} />
+              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b' }}>
+                <strong>🟠 Naranja:</strong> Stock Parcial
+              </span>
+            </div>
+
+            {/* Amarillo - Semi-preparado */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 14, height: 14, borderRadius: 4, backgroundColor: '#f59e0b', boxShadow: '0 0 0 2px #fcd34d' }} />
+              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b' }}>
+                <strong>🟡 Amarillo:</strong> Semi-Preparado
+              </span>
+            </div>
+
+            {/* Turquesa - Preparado Completo */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 14, height: 14, borderRadius: 4, backgroundColor: '#00bcd4', boxShadow: '0 0 0 2px #80deea' }} />
+              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b' }}>
+                <strong>🟢 Turquesa:</strong> Preparado Completo (100%)
+              </span>
+            </div>
+
+            {/* Rojo - Sin Stock */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 14, height: 14, borderRadius: 4, backgroundColor: '#ef4444', boxShadow: '0 0 0 2px #fca5a5' }} />
+              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b' }}>
+                <strong>🔴 Rojo:</strong> Sin Stock
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {totalCount > 20 && (
-        <div style={{ textAlign: 'center', marginTop: 24 }}>
+        <div style={{ textAlign: 'center', marginTop: 20 }}>
           <Pagination
             current={page}
             total={totalCount}
@@ -393,6 +537,7 @@ export const DocumentosPage = () => {
         open={!!selectedDetailDoc}
         document={selectedDetailDoc}
         onClose={() => setSelectedDetailDoc(null)}
+        onSuccess={() => fetchDocuments(objType, page, filterFormik.values)}
         onOpenSemiPrepare={(doc) => {
           setSelectedDetailDoc(null);
           setSelectedSemiPrepareDoc(doc);

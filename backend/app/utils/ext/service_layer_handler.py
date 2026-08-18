@@ -26,10 +26,11 @@ class ServiceLayerHandler:
 
         url_base = self.url_base or (current_app.config.get('SAP_SL_URL') if current_app else 'https://192.168.1.156:50000/b1s/v2/')
 
-        # Determinar la empresa destino: estrictamente parámetro company_db o sesión del usuario
+        # Determinar la empresa destino: estrictamente parámetro company_db o sesión del usuario conectado
         db = company_db or (session.get('company_db') if session else None)
         if not db:
-            raise ValueError("No se ha seleccionado ninguna base de datos SAP en la sesión. Seleccione una empresa al iniciar sesión.")
+            log.warning("[MasterSession] No se ha especificado ninguna base de datos SAP.")
+            return None
 
         master_user = current_app.config.get('SAP_MASTER_USER', 'manager') if current_app else 'manager'
         master_pass = current_app.config.get('SAP_MASTER_PASSWORD', '') if current_app else ''
@@ -292,7 +293,7 @@ class ServiceLayerHandler:
 
         return self._execute_get_data(url, all_results=all_results, master_session=master_session)
 
-    def get_data_from_view(self, view_name, filter=None, selection=None, orderby=None, order_direction=None, page=None, per_page=None, all_results=False):
+    def get_data_from_view(self, view_name, filter=None, selection=None, orderby=None, order_direction=None, page=None, per_page=None, all_results=False, master_session=None):
         if not self.url_base:
             self.url_base = current_app.config.get('SAP_SL_URL', 'https://192.168.1.156:50000/b1s/v2/')
 
@@ -318,7 +319,7 @@ class ServiceLayerHandler:
         if query_params:
             url += f"?{'&'.join(query_params)}"
 
-        return self._execute_get_data(url, all_results=all_results, is_view=True)
+        return self._execute_get_data(url, all_results=all_results, is_view=True, master_session=master_session)
 
     def _build_filter_str(self, filter_dict):
         clauses = []

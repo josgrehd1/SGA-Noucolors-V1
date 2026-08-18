@@ -1,3 +1,4 @@
+from app.data.sap_repository import SapRepository
 from flask import current_app, Blueprint, jsonify, request, session, make_response
 from app.services.auth_service import AuthService
 from app.services.stock_service import StockService
@@ -9,6 +10,16 @@ from app.utils.decorators import sap_login_required
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
+@api_bp.before_request
+def track_active_company_db():
+    try:
+        user_db = session.get('company_db')
+        if user_db:
+            from app.services.sap_sync_monitor import SapSyncMonitor
+            SapSyncMonitor.register_active_db(user_db)
+    except Exception:
+        pass
+
 # ==============================================================================
 # 1. RUTAS DE AUTENTICACIÓN (/api/auth)
 # ==============================================================================
@@ -18,10 +29,10 @@ def login():
     data = request.get_json() or {}
     username = data.get('username')
     password = data.get('password')
-    company_db = data.get('company_db') or current_app.config.get('COMPANY_DB', 'NouColors_D_TEST')
+    company_db = data.get('company_db')
 
-    if not username or not password:
-        return jsonify({'status': 'error', 'message': 'Faltan credenciales de usuario o contraseña'}), 400
+    if not username or not password or not company_db:
+        return jsonify({'status': 'error', 'message': 'Faltan credenciales de usuario, contraseña o selección de base de datos'}), 400
 
     success, msg = AuthService.login(username=username, password=password, company_db=company_db)
     if success:
@@ -141,6 +152,37 @@ def semipreparar_stock(docentry):
 @sap_login_required
 def get_lineas_preparadas(docentry):
     lineas = DocsService.get_lineas_preparadas(docentry)
+    return jsonify({'status': 'ok', 'lineas': lineas, 'count': len(lineas)})
+
+@api_bp.route('/docs/preparadas/batch', methods=["POST"])
+@sap_login_required
+def get_lineas_preparadas_batch():
+    data = request.get_json(silent=True) or {}
+    docentries = data.get('docentries', [])
+    docnums = data.get('docnums', [])
+    all_entries = list({str(x).strip() for x in (docentries + docnums) if x is not None and str(x).strip()})
+    
+    prep_by_doc = {}
+    for entry in all_entries:
+        try:
+            lineas = DocsService.get_lineas_preparadas(entry)
+            if lineas:
+                prep_by_doc[entry] = lineas
+        except Exception:
+            pass
+            
+    return jsonify({'status': 'ok', 'preparadas_por_doc': prep_by_doc})
+
+@api_bp.route('/docs/preparadas/abiertas', methods=["GET"])
+@sap_login_required
+def get_todas_preparadas_abiertas():
+    res = SapRepository.get_data(
+        resource="NC_SGAWEB_DOCS",
+        filter={"U_Estado": "O"},
+        selection=["DocEntry", "U_PedidoEntry", "U_PedidoLine", "U_ItemCode", "U_Quantity", "U_Semi", "U_Estado"],
+        all_results=True
+    )
+    lineas = res.get('data', []) if res.get('status') == 'ok' else []
     return jsonify({'status': 'ok', 'lineas': lineas, 'count': len(lineas)})
 
 @api_bp.route('/finalizar-preparacion/<objtype>/<int:docentry>', methods=["POST"])

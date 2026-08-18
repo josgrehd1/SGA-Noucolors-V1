@@ -55,10 +55,13 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
           return hasPdte || isBinStdPdte || ctdPrep > 0;
         });
 
-        const isSemi = Boolean(doc.IS_SEMI_PREPARADO) ||
+        const isPurchase = String(doc.OBJTYPE || doc.ObjType) === '22';
+        const isSemi = !isPurchase && (
+                       Boolean(doc.IS_SEMI_PREPARADO) ||
                        hasLineInPdteOrSemi ||
                        (doc.SGA_PREPARADAS && doc.SGA_PREPARADAS.length > 0) ||
-                       (gestionadas > 0 && gestionadas < totalLineas);
+                       (gestionadas > 0 && gestionadas < totalLineas)
+        );
 
         const isPrep = !isSemi && (Boolean(doc.IS_COMPLETAMENTE_PREPARADO) || (totalLineas > 0 && gestionadas >= totalLineas));
         const isSinStk = totalLineas > 0 && disponibles === 0 && gestionadas === 0 && !isSemi;

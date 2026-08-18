@@ -163,12 +163,25 @@ def get_lineas_preparadas_batch():
     all_entries = list({str(x).strip() for x in (docentries + docnums) if x is not None and str(x).strip()})
     
     prep_by_doc = {}
-    for entry in all_entries:
+    if all_entries:
         try:
-            lineas = DocsService.get_lineas_preparadas(entry)
-            if lineas:
-                prep_by_doc[entry] = lineas
-        except Exception:
+            # Hacer una ÚNICA consulta OData en lugar de un bucle for
+            res = SapRepository.get_data(
+                resource="NC_SGAWEB_DOCS",
+                selection=["DocEntry", "U_PedidoEntry", "U_PedidoLine", "U_ItemCode", "U_Quantity", "U_BinFrom", "U_ObjType", "U_Estado", "U_Semi"],
+                filter={"U_PedidoEntry__in": all_entries, "U_Estado": "O"},
+                all_results=True,
+                inline_count=False
+            )
+            if res.get('status') == 'ok' and res.get('data'):
+                for line in res['data']:
+                    entry_str = str(line.get('U_PedidoEntry') or '').strip()
+                    if entry_str:
+                        if entry_str not in prep_by_doc:
+                            prep_by_doc[entry_str] = []
+                        prep_by_doc[entry_str].append(line)
+        except Exception as e:
+            print(f"Error en batch preparadas: {e}")
             pass
             
     return jsonify({'status': 'ok', 'preparadas_por_doc': prep_by_doc})

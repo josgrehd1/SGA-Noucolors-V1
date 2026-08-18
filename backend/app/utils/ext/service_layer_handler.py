@@ -246,7 +246,7 @@ class ServiceLayerHandler:
         url = f"{self.url_base}/SQLQueries('{query_name}')/List"
         return self._execute_get_data(url, all_results=all_results, master_session=master_session)
 
-    def get_data(self, resource, id=None, filter=None, selection=None, orderby=None, order_direction=None, page=None, per_page=None, expand=None, all_results=False, master_session=None):
+    def get_data(self, resource, id=None, filter=None, selection=None, orderby=None, order_direction=None, page=None, per_page=None, expand=None, all_results=False, master_session=None, inline_count=True):
         if not self.url_base:
             self.url_base = current_app.config.get('SAP_SL_URL', 'https://192.168.1.156:50000/b1s/v2/')
 
@@ -285,7 +285,7 @@ class ServiceLayerHandler:
         if expand:
             query_params.append(f"$expand={','.join(expand)}")
 
-        if not resource.startswith('Series'):
+        if inline_count and not resource.startswith('Series'):
             query_params.append("$inlinecount=allpages")
 
         if query_params:

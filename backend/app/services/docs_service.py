@@ -78,7 +78,8 @@ class DocsService:
                 doc_res = SapRepository.get_data(
                     resource=res_name,
                     filter={"DocEntry__in": docentries},
-                    all_results=True
+                    all_results=True,
+                    inline_count=False
                 )
                 if doc_res.get('status') == 'ok' and doc_res.get('data'):
                     text_lines_by_doc = {}
@@ -105,76 +106,78 @@ class DocsService:
             except Exception as ex:
                 pass
 
-        # Consultar estado de preparación en @NC_SGAWEB_DOCS (todas las líneas abiertas 'O')
+        # Consultar estado de preparación en @NC_SGAWEB_DOCS (filtrado por la página actual y sin conteo global)
         try:
-            res_sga_docs = SapRepository.get_data(
-                resource="NC_SGAWEB_DOCS",
-                filter={"U_Estado": "O"},
-                selection=["DocEntry", "U_PedidoEntry", "U_PedidoLine", "U_ItemCode", "U_Quantity", "U_Semi", "U_Estado"],
-                all_results=True
-            )
-            if res_sga_docs.get('status') == 'ok' and res_sga_docs.get('data'):
-                prep_by_entry = defaultdict(list)
-                for r in res_sga_docs['data']:
-                    pe_str = str(r.get('U_PedidoEntry') or '').strip()
-                    if pe_str:
-                        prep_by_entry[pe_str].append(r)
-                        pe_clean = pe_str.lstrip('0')
-                        if pe_clean and pe_clean != pe_str:
-                            prep_by_entry[pe_clean].append(r)
+            if docentries:
+                res_sga_docs = SapRepository.get_data(
+                    resource="NC_SGAWEB_DOCS",
+                    filter={"U_Estado": "O", "U_PedidoEntry__in": [str(d) for d in docentries]},
+                    selection=["DocEntry", "U_PedidoEntry", "U_PedidoLine", "U_ItemCode", "U_Quantity", "U_Semi", "U_Estado"],
+                    all_results=True,
+                    inline_count=False
+                )
+                if res_sga_docs.get('status') == 'ok' and res_sga_docs.get('data'):
+                    prep_by_entry = defaultdict(list)
+                    for r in res_sga_docs['data']:
+                        pe_str = str(r.get('U_PedidoEntry') or '').strip()
+                        if pe_str:
+                            prep_by_entry[pe_str].append(r)
+                            pe_clean = pe_str.lstrip('0')
+                            if pe_clean and pe_clean != pe_str:
+                                prep_by_entry[pe_clean].append(r)
 
-                for cabecera in cabeceras:
-                    de_str = str(cabecera.get("DOCENTRY") or '').strip()
-                    dn_str = str(cabecera.get("DOCNUM") or '').strip()
-                    
-                    raw_lines = prep_by_entry.get(de_str, []) + prep_by_entry.get(dn_str, [])
-                    seen_ids = set()
-                    sga_lines = []
-                    for line in raw_lines:
-                        l_id = line.get('DocEntry')
-                        if l_id and l_id not in seen_ids:
-                            seen_ids.add(l_id)
-                            sga_lines.append(line)
-                        elif not l_id:
-                            sga_lines.append(line)
-
-                    if sga_lines:
-                        has_semi = any(str(r.get('U_Semi', '')).upper() == 'Y' for r in sga_lines)
+                    for cabecera in cabeceras:
+                        de_str = str(cabecera.get("DOCENTRY") or '').strip()
+                        dn_str = str(cabecera.get("DOCNUM") or '').strip()
                         
-                        # Agrupar cantidades preparadas por línea y artículo
-                        prep_qty_by_line = defaultdict(float)
-                        for r in sga_lines:
-                            line_key = (r.get('U_PedidoLine'), str(r.get('U_ItemCode', '')).strip().upper())
-                            prep_qty_by_line[line_key] += float(r.get('U_Quantity', 0) or 0)
+                        raw_lines = prep_by_entry.get(de_str, []) + prep_by_entry.get(dn_str, [])
+                        seen_ids = set()
+                        sga_lines = []
+                        for line in raw_lines:
+                            l_id = line.get('DocEntry')
+                            if l_id and l_id not in seen_ids:
+                                seen_ids.add(l_id)
+                                sga_lines.append(line)
+                            elif not l_id:
+                                sga_lines.append(line)
 
-                        order_lines = cabecera.get("LINEAS", [])
-                        total_lines_count = len(order_lines)
-                        fully_prep_count = 0
-                        partially_prep_count = 0
-
-                        for l in order_lines:
-                            l_num = l.get('LineNum') or l.get('LINENUM') or l.get('LINE_NUM')
-                            l_item = str(l.get('ItemCode') or l.get('ITEMCODE') or '').strip().upper()
-                            req_q = float(l.get('Quantity') or l.get('QUANTITY') or 0)
+                        if sga_lines:
+                            has_semi = any(str(r.get('U_Semi', '')).upper() == 'Y' for r in sga_lines)
                             
-                            prep_q = prep_qty_by_line.get((l_num, l_item), 0)
-                            if prep_q <= 0:
-                                prep_q = sum(v for k, v in prep_qty_by_line.items() if k[1] == l_item)
+                            # Agrupar cantidades preparadas por línea y artículo
+                            prep_qty_by_line = defaultdict(float)
+                            for r in sga_lines:
+                                line_key = (r.get('U_PedidoLine'), str(r.get('U_ItemCode', '')).strip().upper())
+                                prep_qty_by_line[line_key] += float(r.get('U_Quantity', 0) or 0)
 
-                            if req_q > 0 and prep_q >= req_q:
-                                fully_prep_count += 1
-                            elif prep_q > 0:
-                                partially_prep_count += 1
+                            order_lines = cabecera.get("LINEAS", [])
+                            total_lines_count = len(order_lines)
+                            fully_prep_count = 0
+                            partially_prep_count = 0
 
-                        total_prep_qty = sum(prep_qty_by_line.values())
-                        if has_semi or partially_prep_count > 0 or (fully_prep_count > 0 and fully_prep_count < total_lines_count) or (fully_prep_count == 0 and total_prep_qty > 0):
-                            cabecera['IS_SEMI_PREPARADO'] = True
-                            cabecera['IS_COMPLETAMENTE_PREPARADO'] = False
-                        elif fully_prep_count == total_lines_count and total_lines_count > 0 and partially_prep_count == 0:
-                            cabecera['IS_COMPLETAMENTE_PREPARADO'] = True
-                            cabecera['IS_SEMI_PREPARADO'] = False
+                            for l in order_lines:
+                                l_num = l.get('LineNum') or l.get('LINENUM') or l.get('LINE_NUM')
+                                l_item = str(l.get('ItemCode') or l.get('ITEMCODE') or '').strip().upper()
+                                req_q = float(l.get('Quantity') or l.get('QUANTITY') or 0)
+                                
+                                prep_q = prep_qty_by_line.get((l_num, l_item), 0)
+                                if prep_q <= 0:
+                                    prep_q = sum(v for k, v in prep_qty_by_line.items() if k[1] == l_item)
 
-                        cabecera['CUENTA_PREPARADO'] = fully_prep_count
+                                if req_q > 0 and prep_q >= req_q:
+                                    fully_prep_count += 1
+                                elif prep_q > 0:
+                                    partially_prep_count += 1
+
+                            total_prep_qty = sum(prep_qty_by_line.values())
+                            if has_semi or partially_prep_count > 0 or (fully_prep_count > 0 and fully_prep_count < total_lines_count) or (fully_prep_count == 0 and total_prep_qty > 0):
+                                cabecera['IS_SEMI_PREPARADO'] = True
+                                cabecera['IS_COMPLETAMENTE_PREPARADO'] = False
+                            elif fully_prep_count == total_lines_count and total_lines_count > 0 and partially_prep_count == 0:
+                                cabecera['IS_COMPLETAMENTE_PREPARADO'] = True
+                                cabecera['IS_SEMI_PREPARADO'] = False
+
+                            cabecera['CUENTA_PREPARADO'] = fully_prep_count
         except Exception:
             pass
 

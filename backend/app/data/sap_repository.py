@@ -8,7 +8,7 @@ class SapRepository:
     """
     
     @staticmethod
-    def get_data(resource, id=None, filter=None, selection=None, orderby=None, order_direction=None, page=None, per_page=None, expand=None, all_results=False, master_session=None):
+    def get_data(resource, id=None, filter=None, selection=None, orderby=None, order_direction=None, page=None, per_page=None, expand=None, all_results=False, master_session=None, inline_count=True):
         """
         Ejecuta peticiones GET /b1s/v2/{resource} o GET /b1s/v2/{resource}({id})
         aprovechando los operadores OData: $select, $filter, $orderby, $top, $skip, $expand.
@@ -24,7 +24,8 @@ class SapRepository:
             per_page=per_page,
             expand=expand,
             all_results=all_results,
-            master_session=master_session
+            master_session=master_session,
+            inline_count=inline_count
         )
 
     @staticmethod

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Modal, Card, Tag, Typography, Button, Row, Col, Space, Input, InputNumber, Select, Tooltip, Spin, Empty, message } from 'antd';
+import { Modal, Card, Tag, Typography, Button, Row, Col, Space, Input, InputNumber, Select, Tooltip, Spin, Empty, message, Collapse } from 'antd';
 import {
   SwapOutlined,
   EnvironmentOutlined,
@@ -38,6 +38,8 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
   const [bultos, setBultos] = useState(1);
   const [printingBultos, setPrintingBultos] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const objType = document?.OBJTYPE || document?.ObjType || '17';
+  const isPurchase = String(objType) === '22';
 
   // Carga dinámica de líneas de detalle
   const [loadingLines, setLoadingLines] = useState(false);
@@ -504,23 +506,25 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
               </div>
 
               {/* Botón Semi */}
-              <Button
-                type="primary"
-                icon={<CheckCircleOutlined />}
-                onClick={handleSemiPreparar}
-                style={{
-                  backgroundColor: '#ffc107',
-                  borderColor: '#ffc107',
-                  color: '#000',
-                  fontWeight: 700,
-                  borderRadius: 6
-                }}
-              >
-                Semi
-              </Button>
+              {!isPurchase && (
+                <Button
+                  type="primary"
+                  icon={<CheckCircleOutlined />}
+                  onClick={handleSemiPreparar}
+                  style={{
+                    backgroundColor: '#ffc107',
+                    borderColor: '#ffc107',
+                    color: '#000',
+                    fontWeight: 700,
+                    borderRadius: 6
+                  }}
+                >
+                  Semi
+                </Button>
+              )}
 
               {/* Botón Entrega Parcial (para pedidos semi-preparados o con líneas confirmadas) */}
-              {!isAllConfirmed && (hasPartialPrep || hasAnyConfirmed) && (
+              {!isPurchase && !isAllConfirmed && (hasPartialPrep || hasAnyConfirmed) && (
                 <Tooltip title="Generar albarán de entrega parcial en SAP solo con las líneas confirmadas">
                   <Button
                     type="primary"
@@ -694,7 +698,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                         <span className="sga-badge-confirmed">
                           <CheckCircleFilled style={{ fontSize: 13 }} /> Confirmada {ctdConfirmada} ud.
                         </span>
-                      ) : isLinePartial ? (
+                      ) : (isLinePartial && !isPurchase) ? (
                         <span style={{
                           backgroundColor: '#fef3c7',
                           color: '#b45309',
@@ -721,50 +725,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                       {line.ITEMNAME || 'Sin descripción'}
                     </div>
 
-                    {/* 2.1 NECESIDADES DE PEDIDOS DE COMPRA (SOLICITUDES TRASLADO, VENTAS, LLAMADAS) */}
-                    {Array.isArray(line.NECESIDADES) && line.NECESIDADES.length > 0 && (
-                      <div className="sga-nec-wrapper">
-                        <div className="sga-nec-header">
-                          <BulbOutlined /> Necesidades / Reservas Origen ({line.NECESIDADES.length})
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          {line.NECESIDADES.map((nec, nIdx) => {
-                            const isTraslado = nec.OBJTYPE === '1250000001' || nec.TIPO === 'Solicitud de Traslado';
-                            const isVenta = nec.OBJTYPE === '17' || nec.TIPO === 'Pedido de Venta';
-                            const docNum = nec.DOCNUM || nec.DocNum || nec.DOCENTRY || nec.LLAMADA || (nIdx + 1);
-                            const fromWhs = nec.FROM_WHS || nec.FromWarehouse || '01';
-                            const toWhs = nec.TO_WHS || nec.ToWarehouse || '13';
-                            const cliente = nec.CARDNAME || nec.CardName || (isTraslado ? `Traslado Alm. ${fromWhs} ➔ Alm. ${toWhs}` : '');
-                            const observaciones = nec.COMENTARIO || nec.Comments || nec.COMENTARIO_LLAMADA || '';
-
-                            return (
-                              <div key={nIdx} className="sga-nec-item">
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                                  <span style={{ fontWeight: 700, color: isTraslado ? '#d97706' : isVenta ? '#2563eb' : '#b45309' }}>
-                                    📄 {nec.TIPO || 'Reserva'} Nº {docNum}
-                                  </span>
-                                  {nec.QTY > 0 && <Tag color="purple" style={{ margin: 0, fontSize: '0.72rem' }}>{nec.QTY} u.</Tag>}
-                                </div>
-
-                                {cliente && (
-                                  <div className="sga-nec-client">
-                                    <span style={{ color: '#64748b', marginRight: 4 }}>🏢 Cliente:</span>
-                                    <strong>{cliente}</strong>
-                                  </div>
-                                )}
-
-                                {observaciones && observaciones !== '-' && (
-                                  <div className="sga-nec-comments">
-                                    <span style={{ color: '#64748b', fontWeight: 600, marginRight: 4 }}>💬 Observaciones:</span>
-                                    <span style={{ color: '#334155' }}>{observaciones}</span>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
+                    {/* 2.1 NECESIDADES MOVIDO ABAJO */}
 
                     {/* 3. CAJA CANTIDAD PREPARADA / TOTAL (ESTILO ORIGINAL AZUL) */}
                     <div className="sga-qty-box">
@@ -928,6 +889,61 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                         />
                       </div>
                     </div>
+
+                    {/* 6.5 NECESIDADES DE PEDIDOS DE COMPRA (SOLICITUDES TRASLADO, VENTAS, LLAMADAS) */}
+                    {Array.isArray(line.NECESIDADES) && line.NECESIDADES.length > 0 && (
+                      <div style={{ marginBottom: 16 }}>
+                        <Collapse
+                          size="small"
+                          items={[{
+                            key: '1',
+                            label: (
+                              <span style={{ fontWeight: 600, color: '#4b5563' }}>
+                                <BulbOutlined /> Necesidades ({line.NECESIDADES.length})
+                              </span>
+                            ),
+                            children: (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                {line.NECESIDADES.map((nec, nIdx) => {
+                                  const isTraslado = nec.OBJTYPE === '1250000001' || nec.TIPO === 'Solicitud de Traslado';
+                                  const isVenta = nec.OBJTYPE === '17' || nec.TIPO === 'Pedido de Venta';
+                                  const docNum = nec.DOCNUM || nec.DocNum || nec.DOCENTRY || nec.LLAMADA || (nIdx + 1);
+                                  const fromWhs = nec.FROM_WHS || nec.FromWarehouse || '01';
+                                  const toWhs = nec.TO_WHS || nec.ToWarehouse || '13';
+                                  const cliente = nec.CARDNAME || nec.CardName || (isTraslado ? `Traslado Alm. ${fromWhs} ➔ Alm. ${toWhs}` : '');
+                                  const observaciones = nec.COMENTARIO || nec.Comments || nec.COMENTARIO_LLAMADA || '';
+
+                                  return (
+                                    <div key={nIdx} className="sga-nec-item">
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                        <span style={{ fontWeight: 700, color: isTraslado ? '#d97706' : isVenta ? '#2563eb' : '#b45309' }}>
+                                          📄 {nec.TIPO || 'Reserva'} Nº {docNum}
+                                        </span>
+                                        {nec.QTY > 0 && <Tag color="purple" style={{ margin: 0, fontSize: '0.72rem' }}>{nec.QTY} u.</Tag>}
+                                      </div>
+
+                                      {cliente && (
+                                        <div className="sga-nec-client">
+                                          <span style={{ color: '#64748b', marginRight: 4 }}>🏢 Cliente:</span>
+                                          <strong>{cliente}</strong>
+                                        </div>
+                                      )}
+
+                                      {observaciones && observaciones !== '-' && (
+                                        <div className="sga-nec-comments">
+                                          <span style={{ color: '#64748b', fontWeight: 600, marginRight: 4 }}>💬 Observaciones:</span>
+                                          <span style={{ color: '#334155' }}>{observaciones}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )
+                          }]}
+                        />
+                      </div>
+                    )}
 
                     {/* 7. BOTÓN CONFIRMAR LÍNEA */}
                     <Button

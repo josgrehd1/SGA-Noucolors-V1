@@ -219,7 +219,8 @@ def change_default_bin():
 @sap_login_required
 def post_inventario():
     payload = request.get_json()
-    res = DocsService.post_inventario(payload)
+    username = session.get('sap_username') or session.get('sap_user') or 'Desconocido'
+    res = DocsService.post_inventario(payload, username)
     return jsonify({'status': 'ok', 'data': res})
 
 @api_bp.route('/docs/traslado', methods=["POST"])

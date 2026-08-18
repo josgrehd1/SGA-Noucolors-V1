@@ -717,34 +717,52 @@ class DocsService:
         return True, f"Ubicación por defecto actualizada a {new_bin} para {itemcode} en almacén {whscode}"
 
     @staticmethod
-    def post_inventario(payload):
-        bin_code = payload.get('BinCode')
-        item_code = payload.get('ItemCode')
-        count_qty = float(payload.get('CountQty', 0))
+    def post_inventario(payload, username="Desconocido"):
+        items = payload if isinstance(payload, list) else [payload]
+        if not items:
+            raise ValueError("El payload de inventario está vacío")
 
-        if not bin_code or not item_code:
-            raise ValueError("Falta BinCode o ItemCode en la solicitud de inventario")
+        bin_cache = {}
+        counting_lines = []
 
-        res_bin = SapRepository.get_data(resource="BinLocations", filter={"BinCode": bin_code}, selection=["AbsEntry"])
-        if res_bin.get('status') != 'ok' or not res_bin.get('data'):
-            raise ValueError(f"No existe la ubicación {bin_code} en SAP")
+        for item in items:
+            bin_code = item.get('BinCode', '').strip()
+            item_code = item.get('ItemCode', '').strip()
+            count_qty = float(item.get('CountQty', 0))
 
-        bin_abs = res_bin['data'][0].get('AbsEntry')
-        counting_payload = {
-            "InventoryCountingLines": [{
+            if not bin_code or not item_code:
+                continue
+
+            if bin_code not in bin_cache:
+                res_bin = SapRepository.get_data(resource="BinLocations", filter={"BinCode": bin_code}, selection=["AbsEntry"])
+                if res_bin.get('status') != 'ok' or not res_bin.get('data'):
+                    raise ValueError(f"No existe la ubicación {bin_code} en SAP")
+                bin_cache[bin_code] = res_bin['data'][0].get('AbsEntry')
+
+            bin_abs = bin_cache[bin_code]
+            whs_code = bin_code.split('-')[0]
+
+            counting_lines.append({
                 "ItemCode": item_code,
+                "WarehouseCode": whs_code,
+                "BinEntry": bin_abs,
                 "CountedQuantity": count_qty,
-                "BinAllocations": [{
-                    "BinAbsEntry": bin_abs,
-                    "CountedQuantity": count_qty
-                }]
-            }]
+                "Counted": "tYES"
+            })
+
+        if not counting_lines:
+            raise ValueError("No hay líneas válidas para contabilizar el inventario")
+
+        counting_payload = {
+            "Remarks": f"Recuento de SGA generado por operario: {username}",
+            "InventoryCountingLines": counting_lines
         }
 
         res = SapRepository.post(resource="InventoryCountings", payload=counting_payload)
         if res.status_code == 201:
-            notify_sap_update(event_type="inventory", details={"itemcode": item_code, "bincode": bin_code, "qty": count_qty})
-            return {"status": "ok", "message": "Recuento de inventario registrado correctamente en SAP"}
+            for item in items:
+                notify_sap_update(event_type="inventory", details={"itemcode": item.get('ItemCode'), "bincode": item.get('BinCode'), "qty": float(item.get('CountQty', 0))})
+            return {"status": "ok", "message": "Recuento de inventario masivo registrado correctamente en SAP"}
         else:
             err_msg = SapRepository.parse_sap_error(res)
             raise Exception(f"Error registrando recuento en SAP: {err_msg}")

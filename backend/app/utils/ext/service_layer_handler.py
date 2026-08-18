@@ -159,7 +159,7 @@ class ServiceLayerHandler:
                 password = session.get('sap_password') if session else None
                 
                 if user and password:
-                    company_db = (session.get('company_db') if session else None) or self.company
+                    company_db = session.get('company_db') if session else None
                     login_res = self.login(user, password, company_db=company_db)
                     
                     if login_res.get("status") == "ok":

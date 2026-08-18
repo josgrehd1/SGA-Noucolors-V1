@@ -27,7 +27,8 @@
   --sga-radius-xl: 12px;
 }
 
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
   font-family: 'Segoe UI', Roboto, -apple-system, BlinkMacSystemFont, Arial, sans-serif;
@@ -104,6 +105,7 @@ html, body {
   .sga-desktop-nav {
     display: none !important;
   }
+
   .sga-hamburger-btn {
     display: inline-flex !important;
     align-items: center;
@@ -115,9 +117,11 @@ html, body {
   .sga-printer-text {
     display: none;
   }
+
   .sga-header-brand-text {
     display: none;
   }
+
   .sga-header-nav {
     padding: 6px 10px;
   }
@@ -135,7 +139,8 @@ html, body {
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
-.btn-login-action:hover, .btn-login-action:focus {
+.btn-login-action:hover,
+.btn-login-action:focus {
   background-color: #2d3748 !important;
   border-color: #2d3748 !important;
 }
@@ -169,12 +174,14 @@ html, body {
 }
 
 /* Efectos de botón Dashboard */
-.dashboard-btn:hover, .dashboard-btn:active {
+.dashboard-btn:hover,
+.dashboard-btn:active {
   transform: translateY(-3px);
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
 }
 
-.dashboard-btn:hover .active-indicator, .dashboard-btn:active .active-indicator {
+.dashboard-btn:hover .active-indicator,
+.dashboard-btn:active .active-indicator {
   opacity: 1 !important;
 }
 
@@ -266,7 +273,8 @@ html, body {
   transition: all 0.15s ease;
 }
 
-.action-card-btn:hover, .action-card-btn:active {
+.action-card-btn:hover,
+.action-card-btn:active {
   transform: translateY(-2px);
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
   filter: brightness(0.97);
@@ -623,6 +631,191 @@ html, body {
   box-shadow: 0 4px 10px rgba(0, 102, 255, 0.25) !important;
 }
 
+/* ==========================================================================
+   6.1 CLASES PARA MODAL DE DETALLE (DocumentDetailModal)
+   ========================================================================== */
+
+.sga-modal-header-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 4px;
+}
+
+.sga-modal-header-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #111827;
+  line-height: 1.25;
+  word-break: break-word;
+}
+
+.sga-modal-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.sga-bultos-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.sga-bultos-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #6c757d;
+  margin-bottom: 2px;
+}
+
+.sga-bultos-group {
+  display: flex;
+  align-items: center;
+}
+
+.sga-bultos-icon {
+  background-color: #f8f9fa;
+  border: 1px solid #d9d9d9;
+  border-right: none;
+  border-radius: 6px 0 0 6px;
+  padding: 4px 8px;
+  font-size: 13px;
+  color: #6c757d;
+  font-weight: 600;
+  height: 32px;
+  display: flex;
+  align-items: center;
+}
+
+.sga-bultos-input {
+  width: 55px;
+  border-radius: 0 !important;
+  text-align: center;
+  font-weight: 700;
+  height: 32px;
+}
+
+.sga-bultos-btn-print {
+  border-radius: 0 6px 6px 0 !important;
+  background-color: #0d6efd !important;
+  border-color: #0d6efd !important;
+  font-weight: 700 !important;
+  padding: 0 10px !important;
+  height: 32px !important;
+}
+
+.sga-btn-modal-semi {
+  background-color: #ffc107 !important;
+  border-color: #ffc107 !important;
+  color: #000 !important;
+  font-weight: 700 !important;
+  border-radius: 6px !important;
+  height: 32px !important;
+}
+
+.sga-btn-modal-parcial {
+  background-color: #f97316 !important;
+  border-color: #f97316 !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+  border-radius: 6px !important;
+  height: 32px !important;
+}
+
+.sga-btn-modal-finalizar {
+  font-weight: 700 !important;
+  border-radius: 6px !important;
+  height: 32px !important;
+}
+
+.sga-btn-modal-volver {
+  border-color: #0d6efd !important;
+  color: #0d6efd !important;
+  font-weight: 600 !important;
+  border-radius: 6px !important;
+  height: 32px !important;
+}
+
+.sga-modal-status-banner {
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 14px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+}
+
+.sga-modal-lines-scroll {
+  max-height: 65vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.sga-step-input-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Vista Previa Desplegable de Líneas en Tarjeta de Pedido */
+.sga-doc-preview-box {
+  margin-top: 12px;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.sga-doc-preview-header {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #64748b;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.sga-doc-preview-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px dashed #e2e8f0;
+}
+
+.sga-doc-preview-row:last-child {
+  border-bottom: none;
+}
+
+.sga-doc-preview-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #1f2937;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.sga-doc-preview-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.sga-doc-preview-qty {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #0f172a;
+  background-color: #e2e8f0;
+  padding: 2px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
 /* Badges de tarjeta en DocumentDetailModal */
 .sga-badge-itemcode {
   background-color: #e5e7eb;
@@ -827,6 +1020,7 @@ html, body {
   color: #000 !important;
   font-weight: 700 !important;
   border-radius: 6px !important;
+  margin-top: 5px;
 }
 
 .sga-semiprep-item-title {
@@ -1042,6 +1236,7 @@ html, body {
    ========================================================================== */
 
 @media (max-width: 768px) {
+
   /* Contenedores de tarjeta con espaciado amplio y respiración visual */
   .sga-doc-card-container {
     margin-bottom: 12px;
@@ -1107,13 +1302,68 @@ html, body {
     padding: 14px 12px !important;
     margin-bottom: 16px !important;
   }
+
+  /* Ajustes específicos del modal de detalle de documentos en móvil */
+  .sga-modal-header-title {
+    font-size: 1.05rem !important;
+    padding-right: 24px;
+    margin-bottom: 4px;
+  }
+
+  .sga-modal-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 6px !important;
+  }
+
+  .sga-bultos-group {
+    height: 36px;
+  }
+
+  .sga-bultos-icon,
+  .sga-bultos-input,
+  .sga-bultos-btn-print {
+    height: 36px !important;
+  }
+
+  .sga-btn-modal-semi,
+  .sga-btn-modal-parcial,
+  .sga-btn-modal-finalizar,
+  .sga-btn-modal-volver {
+    height: 36px !important;
+    font-size: 0.85rem !important;
+    padding: 0 10px !important;
+    flex-grow: 1;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .sga-modal-lines-scroll {
+    max-height: calc(100vh - 230px) !important;
+    padding-right: 0 !important;
+  }
+
+  .sga-step-row {
+    gap: 6px !important;
+  }
+
+  .sga-step-row .ant-btn {
+    padding: 0 10px !important;
+  }
+
+  .sga-qty-box {
+    padding: 8px 12px !important;
+    margin-bottom: 12px !important;
+  }
+
+  .sga-qty-input {
+    width: 45px !important;
+    font-size: 1.35rem !important;
+  }
+
+  .sga-qty-divider,
+  .sga-qty-total {
+    font-size: 1.35rem !important;
+  }
 }
-
-
-
-
-
-
-
-
-

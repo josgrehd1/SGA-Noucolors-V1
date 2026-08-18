@@ -32,13 +32,10 @@ export const SemiPrepareModal = ({ open, document, onClose, onSuccess }) => {
             }
             setLines(loaded);
 
-            // Inicializar cantidades inteligentes basadas en disponibilidad de stock
+            // Inicializar todas las cantidades en 0 por defecto para que el operario solo indique las que traslada
             const initialQtys = {};
             loaded.forEach((line, index) => {
-              const reqQty = line.QUANTITY || 0;
-              const isStockOk = String(line.STOCK_OK || '').toUpperCase() === 'OK';
-              // Si no hay stock disponible, asignar 0 por defecto para evitar errores en el traslado de SAP
-              initialQtys[index] = isStockOk ? reqQty : 0;
+              initialQtys[index] = 0;
             });
             setQuantities(initialQtys);
           })
@@ -48,8 +45,7 @@ export const SemiPrepareModal = ({ open, document, onClose, onSuccess }) => {
             setLines(fallback);
             const initialQtys = {};
             fallback.forEach((line, index) => {
-              const isStockOk = String(line.STOCK_OK || '').toUpperCase() === 'OK';
-              initialQtys[index] = isStockOk ? (line.QUANTITY || 0) : 0;
+              initialQtys[index] = 0;
             });
             setQuantities(initialQtys);
           })
@@ -84,24 +80,7 @@ export const SemiPrepareModal = ({ open, document, onClose, onSuccess }) => {
     message.info('Cantidades ajustadas automáticamente según disponibilidad de stock');
   };
 
-  const handleConfirm = async () => {
-    if (!targetBin.trim()) {
-      message.warning('Debes indicar la ubicación destino para depositar el material semi-preparado');
-      return;
-    }
-
-    const preparedLines = lines
-      .map((line, index) => ({
-        itemcode: line.ITEMCODE,
-        quantity: quantities[index] ?? 0
-      }))
-      .filter((l) => l.quantity > 0);
-
-    if (preparedLines.length === 0) {
-      message.warning('No hay ningún artículo con cantidad mayor a 0 para trasladar. Asigna cantidad a los artículos con stock.');
-      return;
-    }
-
+  const executeSemiPrepare = async (preparedLines) => {
     setSubmitting(true);
     try {
       const payload = {
@@ -124,6 +103,88 @@ export const SemiPrepareModal = ({ open, document, onClose, onSuccess }) => {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleConfirm = () => {
+    if (!targetBin.trim()) {
+      message.warning('Debes indicar la ubicación destino para depositar el material semi-preparado');
+      return;
+    }
+
+    const preparedLines = lines
+      .map((line, index) => ({
+        itemcode: line.ITEMCODE,
+        itemname: line.ITEMNAME,
+        quantity: quantities[index] ?? 0,
+        whscode: line.WHSCODE || '01',
+        bin_std: line.BIN_STD || 'Sin Ubi'
+      }))
+      .filter((l) => l.quantity > 0);
+
+    if (preparedLines.length === 0) {
+      message.warning('No hay ningún artículo con cantidad mayor a 0 para trasladar. Asigna cantidad a los artículos con stock.');
+      return;
+    }
+
+    const destBin = targetBin.trim().toUpperCase();
+
+    Modal.confirm({
+      title: '¿Confirmar Semi-Preparación del Pedido?',
+      width: 550,
+      okText: 'Sí, trasladar a SAP',
+      cancelText: 'Volver y revisar',
+      okButtonProps: {
+        style: { backgroundColor: '#fa8c16', borderColor: '#fa8c16', fontWeight: 700 }
+      },
+      content: (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ marginBottom: 12, padding: '8px 12px', backgroundColor: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, fontSize: '0.85rem' }}>
+            <span>Ubicación destino intermedia: </span>
+            <strong style={{ color: '#ea580c' }}>📍 {destBin}</strong>
+          </div>
+          <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: 8, color: '#374151' }}>
+            Artículos y cantidades seleccionadas ({preparedLines.length}):
+          </div>
+          <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid #f0f0f0', borderRadius: 8, padding: 8, backgroundColor: '#fafafa' }}>
+            {preparedLines.map((item, idx) => (
+              <div
+                key={idx}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '6px 8px',
+                  borderBottom: idx === preparedLines.length - 1 ? 'none' : '1px solid #e5e7eb',
+                  backgroundColor: '#ffffff',
+                  borderRadius: 6,
+                  marginBottom: 4
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{ backgroundColor: '#0d6efd', color: '#fff', fontSize: '0.75rem', fontWeight: 700, padding: '2px 6px', borderRadius: 4 }}>
+                      {item.itemcode}
+                    </span>
+                    <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+                      (Alm: {item.whscode})
+                    </span>
+                  </div>
+                  {item.itemname && (
+                    <div style={{ fontSize: '0.78rem', color: '#4b5563', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.itemname}
+                    </div>
+                  )}
+                </div>
+                <Tag color="orange" style={{ fontWeight: 700, fontSize: '0.85rem', margin: 0 }}>
+                  {item.quantity} u.
+                </Tag>
+              </div>
+            ))}
+          </div>
+        </div>
+      ),
+      onOk: () => executeSemiPrepare(preparedLines.map(l => ({ itemcode: l.itemcode, quantity: l.quantity })))
+    });
   };
 
   // Contadores de stock para aviso al operario
@@ -167,7 +228,7 @@ export const SemiPrepareModal = ({ open, document, onClose, onSuccess }) => {
             borderRadius: 6
           }}
         >
-          Confirmar Semi-Preparación ({activeSelectedQtyCount} {activeSelectedQtyCount === 1 ? 'artículo' : 'artículos'})
+          Confirmar ({activeSelectedQtyCount} {activeSelectedQtyCount === 1 ? 'artículo' : 'artículos'})
         </Button>
       ]}
     >
@@ -282,19 +343,33 @@ export const SemiPrepareModal = ({ open, document, onClose, onSuccess }) => {
                               <Text type="secondary" style={{ fontSize: '0.7rem', display: 'block', fontWeight: 600 }}>
                                 A Trasladar:
                               </Text>
-                              <InputNumber
-                                min={0}
-                                max={reqQty}
-                                value={currentQty}
-                                onChange={(val) => handleQtyChange(idx, val)}
-                                className="sga-semiprep-qty-input"
-                                style={{
-                                  width: 80,
-                                  borderRadius: 6,
-                                  borderColor: currentQty > 0 ? '#fa8c16' : '#d9d9d9',
-                                  fontWeight: 700
-                                }}
-                              />
+                              <Space.Compact>
+                                <InputNumber
+                                  min={0}
+                                  max={reqQty}
+                                  value={currentQty}
+                                  onChange={(val) => handleQtyChange(idx, val)}
+                                  className="sga-semiprep-qty-input"
+                                  style={{
+                                    width: 75,
+                                    borderRadius: '6px 0 0 6px',
+                                    borderColor: currentQty > 0 ? '#fa8c16' : '#d9d9d9',
+                                    fontWeight: 700
+                                  }}
+                                />
+                                <Tooltip title={`Rellenar todo (${reqQty} u.)`}>
+                                  <Button
+                                    icon={<ThunderboltOutlined />}
+                                    onClick={() => handleQtyChange(idx, reqQty)}
+                                    style={{
+                                      borderRadius: '0 6px 6px 0',
+                                      backgroundColor: '#fff7ed',
+                                      borderColor: currentQty > 0 ? '#fa8c16' : '#d9d9d9',
+                                      color: '#ea580c'
+                                    }}
+                                  />
+                                </Tooltip>
+                              </Space.Compact>
                             </div>
                           </Space>
                         </Col>

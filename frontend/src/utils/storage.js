@@ -17,6 +17,23 @@ export const storage = {
     }
   },
 
+  // Sesión de usuario persistente
+  getUserSession: () => {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.USER_SESSION);
+      return data ? JSON.parse(data) : null;
+    } catch {
+      return null;
+    }
+  },
+  setUserSession: (user) => {
+    if (user) {
+      localStorage.setItem(STORAGE_KEYS.USER_SESSION, JSON.stringify(user));
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.USER_SESSION);
+    }
+  },
+
   // Limpiar sesión al cerrar
   clearUserSession: () => {
     localStorage.removeItem(STORAGE_KEYS.USER_SESSION);

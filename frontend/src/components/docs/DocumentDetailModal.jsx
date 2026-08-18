@@ -465,32 +465,21 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
   return (
     <Modal
         title={
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingBottom: 6 }}>
+          <div className="sga-modal-header-container">
             {/* Título Exacto Proyecto Original: Detalle Pedido {DOCNUM} ({CARDNAME}) */}
-            <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#111827', lineHeight: 1.2 }}>
+            <div className="sga-modal-header-title">
               Detalle Pedido {document.DOCNUM || document.DOCENTRY} ({document.CARDNAME || 'Sin Asignar'})
             </div>
 
             {/* Barra de Acciones del Encabezado (Num Bultos, Imp, Semi, Finalizar / Entrega Parcial, Volver) */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 8 }}>
+            <div className="sga-modal-header-actions">
               {/* Input Num Bultos + Botón Imp */}
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#6c757d', marginBottom: 2 }}>
+              <div className="sga-bultos-container">
+                <span className="sga-bultos-label">
                   Num Bultos
                 </span>
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <div
-                    style={{
-                      backgroundColor: '#f8f9fa',
-                      border: '1px solid #d9d9d9',
-                      borderRight: 'none',
-                      borderRadius: '6px 0 0 6px',
-                      padding: '4px 8px',
-                      fontSize: 13,
-                      color: '#6c757d',
-                      fontWeight: 600
-                    }}
-                  >
+                <div className="sga-bultos-group">
+                  <div className="sga-bultos-icon">
                     📦
                   </div>
                   <InputNumber
@@ -498,24 +487,13 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                     max={99}
                     value={bultos}
                     onChange={(v) => setBultos(v || 1)}
-                    style={{
-                      width: 55,
-                      borderRadius: 0,
-                      textAlign: 'center',
-                      fontWeight: 700
-                    }}
+                    className="sga-bultos-input"
                   />
                   <Button
                     type="primary"
                     loading={printingBultos}
                     onClick={handlePrintBultos}
-                    style={{
-                      borderRadius: '0 6px 6px 0',
-                      backgroundColor: '#0d6efd',
-                      borderColor: '#0d6efd',
-                      fontWeight: 700,
-                      padding: '0 10px'
-                    }}
+                    className="sga-bultos-btn-print"
                   >
                     Imp
                   </Button>
@@ -528,13 +506,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                   type="primary"
                   icon={<CheckCircleOutlined />}
                   onClick={handleSemiPreparar}
-                  style={{
-                    backgroundColor: '#ffc107',
-                    borderColor: '#ffc107',
-                    color: '#000',
-                    fontWeight: 700,
-                    borderRadius: 6
-                  }}
+                  className="sga-btn-modal-semi"
                 >
                   Semi
                 </Button>
@@ -548,13 +520,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                     icon={<CheckCircleOutlined />}
                     loading={finishing}
                     onClick={() => handleFinalizar(true)}
-                    style={{
-                      backgroundColor: '#f97316',
-                      borderColor: '#f97316',
-                      color: '#fff',
-                      fontWeight: 700,
-                      borderRadius: 6
-                    }}
+                    className="sga-btn-modal-parcial"
                   >
                     Entrega Parcial
                   </Button>
@@ -569,12 +535,11 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                   loading={finishing}
                   onClick={() => handleFinalizar(false)}
                   disabled={!isAllConfirmed}
+                  className="sga-btn-modal-finalizar"
                   style={{
                     backgroundColor: isAllConfirmed ? '#198754' : '#e5e7eb',
                     borderColor: isAllConfirmed ? '#198754' : '#d1d5db',
                     color: isAllConfirmed ? '#fff' : '#9ca3af',
-                    fontWeight: 700,
-                    borderRadius: 6,
                     cursor: isAllConfirmed ? 'pointer' : 'not-allowed'
                   }}
                 >
@@ -586,12 +551,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
               <Button
                 icon={<ArrowLeftOutlined />}
                 onClick={handleClose}
-                style={{
-                  borderColor: '#0d6efd',
-                  color: '#0d6efd',
-                  fontWeight: 600,
-                  borderRadius: 6
-                }}
+                className="sga-btn-modal-volver"
               >
                 Volver
               </Button>
@@ -602,21 +562,19 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
         onCancel={handleClose}
         width={780}
         footer={null}
-        styles={{ body: { padding: '16px' } }}
+        styles={{ body: { padding: '14px' } }}
       >
         {/* ── BARRA DE PROGRESO DE PREPARACIÓN ── */}
         {lineas.length > 0 && (
-          <div style={{
-            backgroundColor: isAllConfirmed ? '#d1fae5' : (hasPartialPrep ? '#fffbeb' : '#fff7ed'),
-            border: `1px solid ${isAllConfirmed ? '#6ee7b7' : (hasPartialPrep ? '#fcd34d' : '#fed7aa')}`,
-            borderRadius: 8,
-            padding: '8px 16px',
-            marginBottom: 12,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between'
-          }}>
-            <span style={{ fontWeight: 700, fontSize: '0.9rem', color: isAllConfirmed ? '#065f46' : (hasPartialPrep ? '#b45309' : '#92400e') }}>
+          <div
+            className="sga-modal-status-banner"
+            style={{
+              backgroundColor: isAllConfirmed ? '#d1fae5' : (hasPartialPrep ? '#fffbeb' : '#fff7ed'),
+              border: `1px solid ${isAllConfirmed ? '#6ee7b7' : (hasPartialPrep ? '#fcd34d' : '#fed7aa')}`,
+              color: isAllConfirmed ? '#065f46' : (hasPartialPrep ? '#b45309' : '#92400e')
+            }}
+          >
+            <span>
               {isAllConfirmed
                 ? `✅ Todas las líneas confirmadas al 100% (${lineas.length}/${lineas.length}) - Listo para Finalizar`
                 : hasPartialPrep
@@ -627,7 +585,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
           </div>
         )}
         {/* ── CONTENEDOR DE TARJETAS DE LÍNEAS ── */}
-        <div style={{ maxHeight: '65vh', overflowY: 'auto', paddingRight: 4 }}>
+        <div className="sga-modal-lines-scroll">
           {loadingLines ? (
             <div style={{ textAlign: 'center', padding: '60px 0' }}>
               <Spin size="large" tip="Consultando líneas de artículo y stock disponible en SAP..." />
@@ -819,7 +777,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                         1. Escanear Artículo
                       </div>
                       <div className="sga-step-row">
-                        <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="sga-step-input-wrap">
                           <Input
                             prefix={<BarcodeOutlined style={{ color: '#9ca3af' }} />}
                             suffix={
@@ -870,7 +828,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                           {!isBinVerified && <span className="sga-step-tag-mandatory">Obligatorio</span>}
                         </div>
                         <div className="sga-step-row">
-                          <div style={{ flex: 1, minWidth: 0 }}>
+                          <div className="sga-step-input-wrap">
                             <Select
                               showSearch
                               allowClear
@@ -916,7 +874,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                             {!isBinVerified && <span className="sga-step-tag-mandatory">Obligatorio</span>}
                           </div>
                           <div className="sga-step-row">
-                            <div style={{ flex: 1, minWidth: 0 }}>
+                            <div className="sga-step-input-wrap">
                               <Select
                                 showSearch
                                 allowClear
@@ -956,7 +914,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                             {!selectedBinsTo[idx] && <span className="sga-step-tag-mandatory">Obligatorio</span>}
                           </div>
                           <div className="sga-step-row">
-                            <div style={{ flex: 1, minWidth: 0 }}>
+                            <div className="sga-step-input-wrap">
                               <Input
                                 prefix={<EnvironmentOutlined style={{ color: '#0d6efd' }} />}
                                 placeholder="Escanear o escribir ubicación destino..."

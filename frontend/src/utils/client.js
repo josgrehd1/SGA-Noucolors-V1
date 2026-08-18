@@ -14,8 +14,11 @@ const client = axios.create({
 client.interceptors.response.use(
   (response) => response.data,
   (error) => {
-    const errorMsg = error.response?.data?.message || error.message || 'Error en la petición a la API';
-    return Promise.reject(new Error(errorMsg));
+    let errorMsg = error.response?.data?.message || error.message;
+    if (!error.response || error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
+      errorMsg = 'Sin conexión con el servidor. Comprueba la señal Wi-Fi en almacén.';
+    }
+    return Promise.reject(new Error(errorMsg || 'Error en la petición a la API'));
   }
 );
 

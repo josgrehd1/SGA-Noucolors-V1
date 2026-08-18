@@ -17,7 +17,7 @@ class PrintService:
         if not product_id:
             raise ValueError("Falta product_id en la petición")
 
-        active_db = str(session.get('company_db', current_app.config.get('COMPANY_DB', ''))).upper()
+        active_db = str(session.get('company_db', '')).upper()
         display_product_id = product_id
 
         # Lógica Kleantek

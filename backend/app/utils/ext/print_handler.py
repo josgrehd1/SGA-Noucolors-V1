@@ -13,7 +13,7 @@ class PrintHandler:
 
     def send_zpl_to_printer(self, zpl_data, printer_ip='', port=9100):
         try:
-            active_db = session.get('company_db', current_app.config.get('COMPANY_DB', '')) if session else current_app.config.get('COMPANY_DB', '')
+            active_db = session.get('company_db', '') if session else ''
             if 'TEST' in active_db:
                 return True, "TEST ZPL enviado con éxito."
 
@@ -49,7 +49,7 @@ class PrintHandler:
                 temp_pdf.write(pdf_bytes)
                 temp_path = temp_pdf.name
 
-            active_db = session.get('company_db', current_app.config.get('COMPANY_DB', '')) if session else current_app.config.get('COMPANY_DB', '')
+            active_db = session.get('company_db', '') if session else ''
             if 'TEST' in active_db:
                 return True, "TEST PDF enviado con éxito a la impresora."
 

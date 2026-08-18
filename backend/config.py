@@ -17,7 +17,8 @@ class Config:
     # Configuración de Sesión
     SESSION_TYPE = 'filesystem'
     SESSION_FILE_DIR = os.path.join(base_dir, 'flask_session')
-    SESSION_PERMANENT = False
+    SESSION_PERMANENT = True
+    PERMANENT_SESSION_LIFETIME = 60 * 60 * 24 * 30  # 30 días de persistencia
     SESSION_USE_SIGNER = True
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = 'Lax'
@@ -26,7 +27,6 @@ class Config:
     SAP_SL_URL = os.environ.get('SAP_SL_URL', 'https://192.168.1.156:50000/b1s/v2/')
     SAP_SERVER = os.environ.get('SAP_SERVER', '192.168.1.156')
     SAP_PORT = int(os.environ.get('SAP_PORT', 50000))
-    COMPANY_DB = os.environ.get('COMPANY_DB', 'NouColors_D')
 
     # Credenciales Master de SAP
     SAP_MASTER_USER = os.environ.get('SAP_MASTER_USER', 'manager')

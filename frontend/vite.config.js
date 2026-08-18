@@ -7,6 +7,10 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
+    hmr: {
+      // HMR activo solo en dev local; en producción no se usa Vite
+      overlay: false
+    },
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:5000',

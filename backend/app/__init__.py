@@ -3,18 +3,26 @@ import logging
 from logging.handlers import TimedRotatingFileHandler
 import warnings
 from urllib3.exceptions import InsecureRequestWarning
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory, send_file
 from flask_cors import CORS
 from flask_compress import Compress
 from flask_session import Session
+import mimetypes
+
+# Forzar MIME types correctos (Windows a veces mapea .js a text/plain)
+mimetypes.add_type('application/javascript', '.js')
+mimetypes.add_type('text/css', '.css')
 
 from app.utils.extensions import sl_handler, err_handler, socketio
 from app.version import APP_VERSION
 from binaries import register_binaries
 
+# Ruta al build compilado del frontend React
+FRONTEND_DIST = os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', '..', 'frontend', 'dist')
+
 def create_app():
     register_binaries()
-    app = Flask(__name__)
+    app = Flask(__name__, static_folder=FRONTEND_DIST, static_url_path='/')
     Compress(app)
     app.config.from_object('config.Config')
     warnings.simplefilter('ignore', InsecureRequestWarning)
@@ -92,6 +100,24 @@ def create_app():
     # Registrar Blueprint Unificado
     from .routes.api import api_bp
     app.register_blueprint(api_bp)
+
+    # Servir frontend React compilado (SPA catch-all)
+    # Todas las rutas que no sean /api/* retornan el index.html del build de React
+    @app.route('/', defaults={'path': ''})
+    @app.route('/<path:path>')
+    def serve_react(path):
+        dist = FRONTEND_DIST
+        # Intentar servir el archivo estático si existe (JS, CSS, imágenes, etc.)
+        if path and os.path.exists(os.path.join(dist, path)):
+            return send_from_directory(dist, path)
+        # Para todas las rutas de React Router, devolver index.html
+        index_path = os.path.join(dist, 'index.html')
+        if os.path.exists(index_path):
+            return send_file(index_path)
+        # Si no existe build, informar al desarrollador
+        return jsonify({
+            'error': 'Frontend no compilado. Ejecuta: cd frontend && npm run build'
+        }), 404
 
     # Iniciar Monitor en segundo plano para detección de nuevos pedidos en SAP (1 solo hilo global)
     if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":

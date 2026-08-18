@@ -39,6 +39,7 @@ class AuthService:
                         log.warning(f"[Login] ❌ Acceso denegado por Nivel '{nivel}' — no pertenece a un perfil autorizado para el SGA")
                         return False, f"Acceso denegado. Tu perfil de usuario ('{nivel}') no tiene permisos para acceder al SGA. Contacta con el administrador."
 
+                    session.permanent = True
                     session['sap_session'] = master_token
                     session['sap_user'] = emp_info.get('U_MAC_User', username)
                     session['sap_username'] = emp_info.get('FullName', username)

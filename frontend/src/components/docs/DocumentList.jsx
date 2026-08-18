@@ -343,29 +343,24 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
                 {/* Vista previa desplegable de líneas */}
                 {isExpanded && (
                   <div className="sga-doc-preview-box">
-                    <Text strong style={{ fontSize: '0.75rem', color: '#6c757d', display: 'block', marginBottom: 6 }}>
+                    <span className="sga-doc-preview-header">
                       Vista Previa de Líneas ({totalLineas}):
-                    </Text>
+                    </span>
                     {doc.LINEAS && doc.LINEAS.length > 0 ? (
                       doc.LINEAS.map((l, lIdx) => (
-                        <div
-                          key={lIdx}
-                          className="sga-doc-preview-row"
-                          style={{ borderBottom: lIdx < doc.LINEAS.length - 1 ? '1px dashed #e2e8f0' : 'none' }}
-                        >
-                          <span style={{ fontWeight: 600, color: '#1f2937' }} className="text-truncate">
-                            {l.ITEMCODE} - {l.ITEMNAME || 'Sin descripción'}
-                          </span>
-                          <Space size={4}>
-                            <Tag color="cyan" style={{ fontSize: '0.68rem', borderRadius: 4, margin: 0 }}>
-                              D
-                            </Tag>
-                            <Text strong style={{ fontSize: '0.75rem' }}>Ctd: {l.QUANTITY}</Text>
-                          </Space>
+                        <div key={lIdx} className="sga-doc-preview-row">
+                          <div className="sga-doc-preview-text">
+                            <strong>{l.ITEMCODE}</strong> - {l.ITEMNAME || 'Sin descripción'}
+                          </div>
+                          <div className="sga-doc-preview-meta">
+                            <span className="sga-doc-preview-qty">
+                              Ctd: {l.QUANTITY}
+                            </span>
+                          </div>
                         </div>
                       ))
                     ) : (
-                      <Text type="secondary" style={{ fontSize: '0.75rem' }}>Sin detalle de líneas</Text>
+                      <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Sin detalle de líneas</span>
                     )}
                   </div>
                 )}

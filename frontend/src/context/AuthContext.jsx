@@ -7,14 +7,66 @@ import storage from '../utils/storage';
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(storage.getUserSession());
+  const [loading, setLoading] = useState(!storage.getUserSession());
   const [activePrinter, setActivePrinter] = useState(storage.getActivePrinter() || '');
   const [printersList, setPrintersList] = useState([]);
 
   useEffect(() => {
     checkSession();
   }, []);
+
+  // 1. Screen Wake Lock para PDAs y móviles (mantiene la pantalla encendida mientras se usa la app)
+  useEffect(() => {
+    let wakeLock = null;
+
+    const requestWakeLock = async () => {
+      if ('wakeLock' in navigator && user) {
+        try {
+          wakeLock = await navigator.wakeLock.request('screen');
+        } catch (err) {
+          // Si el dispositivo o navegador no lo permite, continuar normalmente
+        }
+      }
+    };
+
+    requestWakeLock();
+
+    // Re-adquirir Wake Lock y verificar sesión silenciosamente al desbloquear el móvil
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        requestWakeLock();
+        authApi.getSession().then((res) => {
+          if (res && res.authenticated) {
+            setUser(res.user);
+            storage.setUserSession(res.user);
+          }
+        }).catch(() => {
+          // Si no hay conexión al despertar, no cerramos sesión
+        });
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (wakeLock) {
+        wakeLock.release().catch(() => {});
+      }
+    };
+  }, [user]);
+
+  // 2. Heartbeat periódico (Keep-Alive cada 3 min) para que la sesión de SAP / Flask nunca caduque por inactividad
+  useEffect(() => {
+    if (!user) return;
+
+    const interval = setInterval(() => {
+      authApi.getSession().catch(() => {});
+    }, 180000);
+
+    return () => clearInterval(interval);
+  }, [user]);
 
   useEffect(() => {
     if (user) {
@@ -27,11 +79,19 @@ export const AuthProvider = ({ children }) => {
       const res = await authApi.getSession();
       if (res && res.authenticated) {
         setUser(res.user);
+        storage.setUserSession(res.user);
       } else {
+        // Solo si el backend responde explícitamente que la sesión expiró
         setUser(null);
+        storage.clearUserSession();
       }
     } catch (err) {
-      setUser(null);
+      // Si la petición falla por caída de Wi-Fi / red en almacén, NO cerramos sesión
+      console.warn('[Offline Mode] No se pudo verificar la sesión por fallo de Wi-Fi temporal. Manteniendo sesión local activa.');
+      const cached = storage.getUserSession();
+      if (cached) {
+        setUser(cached);
+      }
     } finally {
       setLoading(false);
     }
@@ -72,6 +132,7 @@ export const AuthProvider = ({ children }) => {
     if (res.status === 'ok') {
       const loggedUser = res.user || { username, company_db };
       setUser(loggedUser);
+      storage.setUserSession(loggedUser);
 
       const assignedPrinter = loggedUser.printer || storage.getActivePrinter() || '';
       if (!assignedPrinter) {

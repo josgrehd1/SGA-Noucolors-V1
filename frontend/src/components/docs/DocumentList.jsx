@@ -56,7 +56,8 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
         });
 
         const isPurchase = String(doc.OBJTYPE || doc.ObjType) === '22';
-        const isSemi = !isPurchase && (
+        const isTransfer = String(doc.OBJTYPE || doc.ObjType) === '1250000001' || String(doc.OBJTYPE || doc.ObjType) === '67';
+        const isSemi = !isPurchase && !isTransfer && (
                        Boolean(doc.IS_SEMI_PREPARADO) ||
                        hasLineInPdteOrSemi ||
                        (doc.SGA_PREPARADAS && doc.SGA_PREPARADAS.length > 0) ||

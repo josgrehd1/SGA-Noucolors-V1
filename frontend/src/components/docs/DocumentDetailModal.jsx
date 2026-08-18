@@ -40,6 +40,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
   const [finishing, setFinishing] = useState(false);
   const objType = document?.OBJTYPE || document?.ObjType || '17';
   const isPurchase = String(objType) === '22';
+  const isTransfer = String(objType) === '1250000001' || String(objType) === '67';
 
   // Carga dinámica de líneas de detalle
   const [loadingLines, setLoadingLines] = useState(false);
@@ -51,6 +52,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
   // Estado para preparar cantidades por línea
   const [preparedQtys, setPreparedQtys] = useState({});
   const [selectedBins, setSelectedBins] = useState({});
+  const [selectedBinsTo, setSelectedBinsTo] = useState({});
   const [scannedItems, setScannedItems] = useState({});
 
   // Estado para Modal de Reparto Multi-Ubicación
@@ -106,6 +108,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
             const initialQtys = {};
             const initialScanned = {};
             const initialBins = {};
+            const initialBinsTo = {};
 
             loadedLines.forEach((line, idx) => {
               const lineNum = line.LINENUM ?? line.LINE_NUM ?? idx;
@@ -125,15 +128,20 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                 initialQtys[idx] = prep.U_Quantity ?? line.CTD_PREPARADA ?? 0;
                 initialScanned[idx] = line.ITEMCODE || '';
                 initialBins[idx] = prep.U_BinFrom || '';
+                initialBinsTo[idx] = prep.U_BinTo || '';
               } else {
                 // Inicialmente siempre 0. El operario indica la cantidad o pulsa el icono del rayo ⚡ para autorellenar.
                 initialQtys[idx] = (line.CTD_PREPARADA && line.CTD_PREPARADA > 0) ? line.CTD_PREPARADA : 0;
+                if (line.BIN_DESTINO || line.U_BinTo) {
+                  initialBinsTo[idx] = line.BIN_DESTINO || line.U_BinTo;
+                }
               }
             });
 
             setPreparedQtys(initialQtys);
             setScannedItems(initialScanned);
             setSelectedBins(initialBins);
+            setSelectedBinsTo(initialBinsTo);
           })
           .catch((err) => {
             console.error('Error al consultar detalle del pedido:', err);
@@ -153,6 +161,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
       setPreparedQtys({});
       setScannedItems({});
       setSelectedBins({});
+      setSelectedBinsTo({});
     }
   }, [open, document]);
 
@@ -301,7 +310,13 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
 
     // Ubicación obligatoria — el operario debe seleccionarla
     if (!targetBin || !targetBin.trim()) {
-      message.error(`Debes seleccionar una ubicación para confirmar la línea ${line.ITEMCODE}`);
+      message.error(`Debes seleccionar la ubicación ${isTransfer ? 'de origen' : ''} para confirmar la línea ${line.ITEMCODE}`);
+      return;
+    }
+
+    const targetBinTo = selectedBinsTo[idx] || null;
+    if (isTransfer && (!targetBinTo || !targetBinTo.trim())) {
+      message.error(`Debes indicar la ubicación de destino para confirmar la línea ${line.ITEMCODE}`);
       return;
     }
 
@@ -320,8 +335,8 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
     const primaryUbiObj = ubisList.find(u => getBinCode(u) === targetBin);
     const primaryAvailable = primaryUbiObj ? getBinQty(primaryUbiObj) : 0;
 
-    // Si la cantidad a preparar supera el stock disponible en la ubicación seleccionada y hay más ubicaciones con stock
-    if (qty > primaryAvailable && ubisList.length > 1) {
+    // Si la cantidad a preparar supera el stock disponible en la ubicación seleccionada y hay más ubicaciones con stock (solo en ventas)
+    if (!isTransfer && qty > primaryAvailable && ubisList.length > 1) {
       const formattedBins = ubisList.map(u => ({
         bincode: getBinCode(u),
         onhandqty: getBinQty(u),
@@ -347,15 +362,16 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
       const payload = {
         U_ItemCode: line.ITEMCODE,
         U_BinFrom: targetBin,
+        U_BinTo: isTransfer ? targetBinTo : '',
         U_Quantity: qty,
         U_PedidoEntry: document.DOCENTRY || document.DOCNUM,
         U_PedidoLine: line.LINENUM ?? line.LINE_NUM ?? idx,
-        U_ObjType: String(document.OBJTYPE || '17'),
+        U_ObjType: String(document.OBJTYPE || (isTransfer ? '1250000001' : isPurchase ? '22' : '17')),
         U_Estado: 'O'
       };
       const res = await client.post('/confirmar-mov-stock', payload);
       if (res.status === 'ok') {
-        message.success(res.message || `Línea ${line.ITEMCODE} registrada correctamente en ubicación ${targetBin}`);
+        message.success(res.message || `Línea ${line.ITEMCODE} registrada correctamente${isTransfer ? ` (${targetBin} ➔ ${targetBinTo})` : ` en ubicación ${targetBin}`}`);
         // Actualizar el estado local en React inmediatamente (UI instantánea)
         const lineNum = line.LINENUM ?? line.LINE_NUM ?? idx;
         const newPrepLine = {
@@ -364,6 +380,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
           U_ItemCode: line.ITEMCODE,
           U_Quantity: qty,
           U_BinFrom: targetBin,
+          U_BinTo: isTransfer ? targetBinTo : '',
           U_Estado: 'O'
         };
         setLineasPreparadas(prev => {
@@ -506,7 +523,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
               </div>
 
               {/* Botón Semi */}
-              {!isPurchase && (
+              {!isPurchase && !isTransfer && (
                 <Button
                   type="primary"
                   icon={<CheckCircleOutlined />}
@@ -524,7 +541,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
               )}
 
               {/* Botón Entrega Parcial (para pedidos semi-preparados o con líneas confirmadas) */}
-              {!isPurchase && !isAllConfirmed && (hasPartialPrep || hasAnyConfirmed) && (
+              {!isPurchase && !isTransfer && !isAllConfirmed && (hasPartialPrep || hasAnyConfirmed) && (
                 <Tooltip title="Generar albarán de entrega parcial en SAP solo con las líneas confirmadas">
                   <Button
                     type="primary"
@@ -845,50 +862,127 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                       </div>
                     </div>
 
-                    {/* 6. PASO 2: Seleccionar Ubicación */}
-                    <div style={{ marginBottom: 16 }}>
-                      <div className="sga-step-title">
-                        2. Seleccionar Ubicación <span className="sga-step-required">*</span>
-                        {!isBinVerified && <span className="sga-step-tag-mandatory">Obligatorio</span>}
-                      </div>
-                      <div className="sga-step-row">
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <Select
-                            showSearch
-                            allowClear
-                            placeholder={binOptions.length > 0 ? 'Selecciona o escribe una ubicación...' : 'Escribe el código de ubicación...'}
-                            value={currentBin || undefined}
-                            onChange={(val) => setSelectedBins({ ...selectedBins, [idx]: val || null })}
+                    {/* 6. PASO 2: Seleccionar Ubicación (Origen y Destino si es Solicitud de Traslado) */}
+                    {!isTransfer ? (
+                      <div style={{ marginBottom: 16 }}>
+                        <div className="sga-step-title">
+                          2. Seleccionar Ubicación {isPurchase ? '(Destino)' : '(Origen)'} <span className="sga-step-required">*</span>
+                          {!isBinVerified && <span className="sga-step-tag-mandatory">Obligatorio</span>}
+                        </div>
+                        <div className="sga-step-row">
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <Select
+                              showSearch
+                              allowClear
+                              placeholder={binOptions.length > 0 ? 'Selecciona o escribe una ubicación...' : 'Escribe el código de ubicación...'}
+                              value={currentBin || undefined}
+                              onChange={(val) => setSelectedBins({ ...selectedBins, [idx]: val || null })}
+                              size="large"
+                              style={{
+                                width: '100%',
+                                borderRadius: 8,
+                              }}
+                              options={binOptions}
+                              filterOption={(input, option) =>
+                                (option?.value || '').toUpperCase().includes(input.toUpperCase())
+                              }
+                              notFoundContent={
+                                <span style={{ color: '#6b7280', fontSize: '0.82rem' }}>
+                                  No hay ubicaciones con stock. Puedes escribir el código manualmente.
+                                </span>
+                              }
+                            />
+                          </div>
+
+                          {isBinVerified && (
+                            <CheckCircleFilled style={{ color: '#198754', fontSize: 24, flexShrink: 0 }} />
+                          )}
+
+                          <Button
+                            icon={<PrinterOutlined />}
+                            onClick={() => handlePrintBinLabel(currentBin)}
+                            disabled={!currentBin}
                             size="large"
-                            style={{
-                              width: '100%',
-                              borderRadius: 8,
-                            }}
-                            options={binOptions}
-                            filterOption={(input, option) =>
-                              (option?.value || '').toUpperCase().includes(input.toUpperCase())
-                            }
-                            notFoundContent={
-                              <span style={{ color: '#6b7280', fontSize: '0.82rem' }}>
-                                No hay ubicaciones con stock. Puedes escribir el código manualmente.
-                              </span>
-                            }
+                            style={{ borderRadius: 8, borderColor: '#d9d9d9', flexShrink: 0 }}
                           />
                         </div>
-
-                        {isBinVerified && (
-                          <CheckCircleFilled style={{ color: '#198754', fontSize: 24, flexShrink: 0 }} />
-                        )}
-
-                        <Button
-                          icon={<PrinterOutlined />}
-                          onClick={() => handlePrintBinLabel(currentBin)}
-                          disabled={!currentBin}
-                          size="large"
-                          style={{ borderRadius: 8, borderColor: '#d9d9d9', flexShrink: 0 }}
-                        />
                       </div>
-                    </div>
+                    ) : (
+                      <div style={{ marginBottom: 16 }}>
+                        {/* 2a. Ubicación de Origen */}
+                        <div style={{ marginBottom: 12 }}>
+                          <div className="sga-step-title">
+                            2a. Seleccionar Ubicación Origen <span className="sga-step-required">*</span>
+                            {!isBinVerified && <span className="sga-step-tag-mandatory">Obligatorio</span>}
+                          </div>
+                          <div className="sga-step-row">
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <Select
+                                showSearch
+                                allowClear
+                                placeholder={binOptions.length > 0 ? 'Selecciona ubicación origen...' : 'Escribe ubicación origen...'}
+                                value={currentBin || undefined}
+                                onChange={(val) => setSelectedBins({ ...selectedBins, [idx]: val || null })}
+                                size="large"
+                                style={{ width: '100%', borderRadius: 8 }}
+                                options={binOptions}
+                                filterOption={(input, option) =>
+                                  (option?.value || '').toUpperCase().includes(input.toUpperCase())
+                                }
+                                notFoundContent={
+                                  <span style={{ color: '#6b7280', fontSize: '0.82rem' }}>
+                                    No hay ubicaciones con stock. Puedes escribir el código manualmente.
+                                  </span>
+                                }
+                              />
+                            </div>
+                            {isBinVerified && (
+                              <CheckCircleFilled style={{ color: '#198754', fontSize: 24, flexShrink: 0 }} />
+                            )}
+                            <Button
+                              icon={<PrinterOutlined />}
+                              onClick={() => handlePrintBinLabel(currentBin)}
+                              disabled={!currentBin}
+                              size="large"
+                              style={{ borderRadius: 8, borderColor: '#d9d9d9', flexShrink: 0 }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* 2b. Ubicación de Destino */}
+                        <div>
+                          <div className="sga-step-title">
+                            2b. Seleccionar Ubicación Destino <span className="sga-step-required">*</span>
+                            {!selectedBinsTo[idx] && <span className="sga-step-tag-mandatory">Obligatorio</span>}
+                          </div>
+                          <div className="sga-step-row">
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <Input
+                                prefix={<EnvironmentOutlined style={{ color: '#0d6efd' }} />}
+                                placeholder="Escanear o escribir ubicación destino..."
+                                value={selectedBinsTo[idx] || ''}
+                                onChange={(e) => setSelectedBinsTo({ ...selectedBinsTo, [idx]: e.target.value.toUpperCase() })}
+                                size="large"
+                                style={{
+                                  borderRadius: 8,
+                                  borderColor: selectedBinsTo[idx] ? '#198754' : '#d9d9d9'
+                                }}
+                              />
+                            </div>
+                            {selectedBinsTo[idx] && (
+                              <CheckCircleFilled style={{ color: '#198754', fontSize: 24, flexShrink: 0 }} />
+                            )}
+                            <Button
+                              icon={<PrinterOutlined />}
+                              onClick={() => handlePrintBinLabel(selectedBinsTo[idx])}
+                              disabled={!selectedBinsTo[idx]}
+                              size="large"
+                              style={{ borderRadius: 8, borderColor: '#d9d9d9', flexShrink: 0 }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* 6.5 NECESIDADES DE PEDIDOS DE COMPRA (SOLICITUDES TRASLADO, VENTAS, LLAMADAS) */}
                     {Array.isArray(line.NECESIDADES) && line.NECESIDADES.length > 0 && (

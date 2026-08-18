@@ -77,7 +77,9 @@ export const StockDetailModal = ({ open, item, activeTab = 'ubis', onClose }) =>
   if (!item) return null;
 
   const ubicaciones = item.Ubicaciones || [];
-  const warehouseList = item.ItemWarehouseInfoCollection || [];
+  const warehouseList = (item.ItemWarehouseInfoCollection || []).filter(
+    (whs) => (whs.InStock || 0) > 0 || (whs.Committed || 0) > 0 || (whs.Ordered || 0) > 0
+  );
 
   const totalStock = item.QuantityOnStock || 0;
   const totalCommitted = item.QuantityOrderedByCustomers || 0;
@@ -87,7 +89,7 @@ export const StockDetailModal = ({ open, item, activeTab = 'ubis', onClose }) =>
 
   const tabsConfig = [
     { key: 'ubis', label: 'Ubicaciones', icon: <EnvironmentOutlined />, count: `${ubicaciones.length} ubi`, color: '#3b82f6' },
-    { key: 'whs', label: 'Almacenes', icon: <ShopOutlined />, count: `${warehouseList.length} SAP`, color: '#10b981' },
+    { key: 'whs', label: 'Almacenes', icon: <ShopOutlined />, count: `${warehouseList.length} alm`, color: '#10b981' },
     { key: 'nec', label: 'Necesidades', icon: <BulbOutlined />, count: deficit > 0 ? `-${deficit}u` : 'ATP', color: '#f59e0b' },
     { key: 'mov', label: 'Movimientos', icon: <SwapOutlined />, count: movimientosSummary.total_movimientos || 'Hist', color: '#8b5cf6' }
   ];
@@ -261,43 +263,51 @@ export const StockDetailModal = ({ open, item, activeTab = 'ubis', onClose }) =>
         {/* Pestaña: Almacenes */}
         {selectedTab === 'whs' && (
           <div>
-            <Row gutter={[10, 10]}>
-              {warehouseList.map((whs) => {
-                const disp = (whs.InStock || 0) - (whs.Committed || 0);
-                return (
-                  <Col span={24} key={whs.WarehouseCode}>
-                    <Card
-                      className="sga-nec-card-box"
-                      styles={{ body: { padding: 12 } }}
-                      style={{ borderLeft: '4px solid #10b981' }}
-                    >
-                      <Row justify="space-between" align="middle" gutter={[8, 8]}>
-                        <Col xs={24} sm={10}>
-                          <div style={{ fontWeight: 800, fontSize: '0.92rem', color: '#0f172a' }}>
-                            <ShopOutlined style={{ marginRight: 6, color: '#10b981' }} />
-                            Almacén #{whs.WarehouseCode}
-                          </div>
-                        </Col>
+            {warehouseList.length === 0 ? (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description="Este producto no tiene existencias ni movimientos en ningún almacén"
+                style={{ margin: '24px 0' }}
+              />
+            ) : (
+              <Row gutter={[10, 10]}>
+                {warehouseList.map((whs) => {
+                  const disp = (whs.InStock || 0) - (whs.Committed || 0);
+                  return (
+                    <Col span={24} key={whs.WarehouseCode}>
+                      <Card
+                        className="sga-nec-card-box"
+                        styles={{ body: { padding: 12 } }}
+                        style={{ borderLeft: '4px solid #10b981' }}
+                      >
+                        <Row justify="space-between" align="middle" gutter={[8, 8]}>
+                          <Col xs={24} sm={10}>
+                            <div style={{ fontWeight: 800, fontSize: '0.92rem', color: '#0f172a' }}>
+                              <ShopOutlined style={{ marginRight: 6, color: '#10b981' }} />
+                              Almacén #{whs.WarehouseCode}
+                            </div>
+                          </Col>
 
-                        <Col xs={24} sm={14} style={{ textAlign: 'right' }}>
-                          <Space wrap size={[6, 6]} justify="end">
-                            <Tag color="blue" style={{ borderRadius: 6, fontSize: '0.78rem' }}>
-                              Stock: {whs.InStock || 0} u.
-                            </Tag>
-                            <Tag color="orange" style={{ borderRadius: 6, fontSize: '0.78rem' }}>
-                              Comprom: {whs.Committed || 0} u.
-                            </Tag>
-                            <Tag color={disp > 0 ? 'green' : 'red'} style={{ borderRadius: 6, fontWeight: 700, fontSize: '0.82rem' }}>
-                              Disp: {disp} u.
-                            </Tag>
-                          </Space>
-                        </Col>
-                      </Row>
-                    </Card>
-                  </Col>
-                );
-              })}
-            </Row>
+                          <Col xs={24} sm={14} style={{ textAlign: 'right' }}>
+                            <Space wrap size={[6, 6]} justify="end">
+                              <Tag color="blue" style={{ borderRadius: 6, fontSize: '0.78rem' }}>
+                                Stock: {whs.InStock || 0} u.
+                              </Tag>
+                              <Tag color="orange" style={{ borderRadius: 6, fontSize: '0.78rem' }}>
+                                Comprom: {whs.Committed || 0} u.
+                              </Tag>
+                              <Tag color={disp > 0 ? 'green' : 'red'} style={{ borderRadius: 6, fontWeight: 700, fontSize: '0.82rem' }}>
+                                Disp: {disp} u.
+                              </Tag>
+                            </Space>
+                          </Col>
+                        </Row>
+                      </Card>
+                    </Col>
+                  );
+                })}
+              </Row>
+            )}
           </div>
         )}
 

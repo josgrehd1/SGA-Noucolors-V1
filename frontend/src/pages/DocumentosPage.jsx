@@ -67,7 +67,7 @@ export const DocumentosPage = () => {
 
   const handleSearchCustomer = async (searchText = '') => {
     const term = (searchText || '').trim().toLowerCase();
-    
+
     // Sugerencias de clientes desde los documentos cargados actualmente
     const localMatches = Array.from(
       new Set(
@@ -471,11 +471,6 @@ export const DocumentosPage = () => {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              🎨 Leyenda de Estados:
-            </span>
-          </div>
 
           <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
             {/* Azul - Disponible */}

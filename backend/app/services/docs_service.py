@@ -294,7 +294,7 @@ class DocsService:
             for item in unique_items:
                 try:
                     res_calls = ProductService.get_product_calls(item)
-                    calls_map[item] = res_calls.get("calls", [])
+                    calls_map[item] = res_calls.get("calls", [])[:3]
                 except Exception as ex:
                     print(f"[DocsService] Error al obtener necesidades para item {item}: {ex}")
                     calls_map[item] = []
@@ -490,6 +490,33 @@ class DocsService:
         - parcial=False: genera albarán con las líneas confirmadas en NC_SGAWEB_DOCS o con todas las del pedido si no hay confirmadas
         """
         from app.services.albaran_service import AlbaranService
+
+        # Si es Solicitud de Traslado (OBJTYPE == '1250000001'), se genera un StockTransfers en lugar de Albarán de Entrega
+        if str(objtype) == '1250000001':
+            doc_original = SapRepository.get_data(resource="InventoryTransferRequests", id=int(docentry))
+            if doc_original.get('status') != 'ok' or not doc_original.get('data'):
+                return jsonify({"status": "error", "message": f"No se pudo consultar la solicitud de traslado #{docentry} en SAP"}), 404
+
+            doc_original_data = doc_original['data'][0]
+            lineas_preparadas = DocsService.get_lineas_preparadas(docentry)
+            if not lineas_preparadas:
+                return jsonify({"status": "error", "message": "No hay líneas confirmadas para este traslado. Confirma las ubicaciones origen y destino antes de finalizar."}), 400
+
+            mapping_fields = {
+                "bin_from": "U_BinFrom",
+                "bin_to": "U_BinTo",
+                "prod": "U_ItemCode",
+                "qty": "U_Quantity"
+            }
+            res_traslado = DocsService._ejecutar_traslado_lineas(
+                lineas=lineas_preparadas,
+                mapping_fields=mapping_fields,
+                doc_original=doc_original_data,
+                obj_type="1250000001",
+                is_linked=True
+            )
+            notify_sap_update(event_type="finalizar", details={"docentry": int(docentry), "objtype": "1250000001", "parcial": False})
+            return res_traslado
 
         # Obtener el pedido original de SAP para campos de cabecera y líneas
         doc_original = SapRepository.get_data(resource="Orders", id=int(docentry))
@@ -831,28 +858,30 @@ class DocsService:
             except (ValueError, TypeError):
                 return None
 
-        fld_bin_from = mapping_fields.get('bin_from')
-        fld_bin_to = mapping_fields.get('bin_to')
-        fld_qty = 'CTD_PREPARADA'
-        fld_prod = 'ITEMCODE'
+        fld_bin_from = mapping_fields.get('bin_from', 'U_BinFrom')
+        fld_bin_to = mapping_fields.get('bin_to', 'U_BinTo')
+        fld_qty = mapping_fields.get('qty', 'U_Quantity')
+        fld_prod = mapping_fields.get('prod', 'U_ItemCode')
 
         ubicaciones = list({d[clave] for d in lineas for clave in (fld_bin_from, fld_bin_to) if clave in d and d[clave]})
         mapping_ubi = StockService.get_id_ubicaciones(lista_ubicaciones=ubicaciones)
 
-        lineas_validas = [lin for lin in lineas if float(lin.get(fld_qty, 0) or 0) > 0]
+        lineas_validas = [lin for lin in lineas if float(lin.get(fld_qty) or lin.get('U_Quantity') or lin.get('CTD_PREPARADA') or 0) > 0]
         if not lineas_validas:
             return jsonify({"status": "error", "message": "No hay líneas con cantidad preparada mayor a 0"}), 400
 
         res_bin = SapRepository.get_data(resource="BinLocations", id=mapping_ubi.get(lineas_validas[0].get(fld_bin_from)), selection=["Warehouse"])
-        from_whs = res_bin['data'][0].get('Warehouse') if res_bin.get('data') else '01'
+        from_whs = (doc_original.get('FromWarehouse') if doc_original else None) or (res_bin['data'][0].get('Warehouse') if res_bin.get('data') else '01')
 
         res_bin_to = SapRepository.get_data(resource="BinLocations", id=mapping_ubi.get(lineas_validas[0].get(fld_bin_to)), selection=["Warehouse"])
-        to_whs = res_bin_to['data'][0].get('Warehouse') if res_bin_to.get('data') else '01'
+        to_whs = (doc_original.get('ToWarehouse') if doc_original else None) or (res_bin_to['data'][0].get('Warehouse') if res_bin_to.get('data') else '01')
 
         transfer_lines = []
         for lin in lineas_validas:
             abs_from = mapping_ubi.get(lin.get(fld_bin_from))
             abs_to = mapping_ubi.get(lin.get(fld_bin_to))
+            qty_val = float(lin.get(fld_qty) or lin.get('U_Quantity') or lin.get('CTD_PREPARADA') or 0)
+            prod_val = lin.get(fld_prod) or lin.get('U_ItemCode') or lin.get('ITEMCODE')
 
             bin_allocations = []
             if abs_from and abs_to and abs_from == abs_to:
@@ -862,7 +891,7 @@ class DocsService:
                 if abs_from:
                     alloc_from = {
                         "BinAbsEntry": abs_from,
-                        "Quantity": float(lin.get(fld_qty, 0)),
+                        "Quantity": qty_val,
                         "BinActionType": "batFromWarehouse"
                     }
                     if lin.get('dist_number'):
@@ -871,7 +900,7 @@ class DocsService:
                 if abs_to:
                     alloc_to = {
                         "BinAbsEntry": abs_to,
-                        "Quantity": float(lin.get(fld_qty, 0)),
+                        "Quantity": qty_val,
                         "BinActionType": "batToWarehouse"
                     }
                     if lin.get('dist_number'):
@@ -879,24 +908,28 @@ class DocsService:
                     bin_allocations.append(alloc_to)
 
             line_entry = {
-                "ItemCode": lin.get(fld_prod),
-                "Quantity": float(lin.get(fld_qty, 0)),
+                "ItemCode": prod_val,
+                "Quantity": qty_val,
                 "FromWarehouseCode": from_whs,
                 "WarehouseCode": to_whs,
                 "StockTransferLinesBinAllocations": bin_allocations
             }
 
-            if obj_type == "1250000001":
+            if str(obj_type) == "1250000001":
                 line_entry["BaseType"] = 1250000001
-                line_entry["BaseEntry"] = to_int_or_none(lin.get("U_PedidoEntry"))
-                line_entry["BaseLine"] = to_int_or_none(lin.get("U_PedidoLine"))
+                line_entry["BaseEntry"] = to_int_or_none(lin.get("U_PedidoEntry") or lin.get("DocEntry"))
+                line_entry["BaseLine"] = to_int_or_none(lin.get("U_PedidoLine") or lin.get("LineNum"))
 
             if val := lin.get('dist_number', ''):
-                line_entry["SerialNumbers"] = [{"InternalSerialNumber": val, "Quantity": float(lin.get(fld_qty, 1))}]
+                line_entry["SerialNumbers"] = [{"InternalSerialNumber": val, "Quantity": float(qty_val)}]
 
             transfer_lines.append(line_entry)
 
-        transfer_payload = {"StockTransferLines": transfer_lines}
+        transfer_payload = {
+            "FromWarehouse": from_whs,
+            "ToWarehouse": to_whs,
+            "StockTransferLines": transfer_lines
+        }
         res = SapRepository.post(resource="StockTransfers", payload=transfer_payload)
 
         if res.status_code == 201:

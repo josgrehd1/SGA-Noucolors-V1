@@ -128,8 +128,10 @@ export const DocumentosPage = () => {
   };
 
   useEffect(() => {
-    handleSearchCustomer(filterFormik.values.cliente);
-    handleSearchDocnum(filterFormik.values.search_docnum);
+    // Solo lanzar sugerencias si el usuario ya tiene un término activo en el buscador.
+    // Evita peticiones API vacías en cada recarga de la lista de documentos.
+    if (filterFormik.values.cliente) handleSearchCustomer(filterFormik.values.cliente);
+    if (filterFormik.values.search_docnum) handleSearchDocnum(filterFormik.values.search_docnum);
   }, [objType, documents]);
 
   useEffect(() => {
@@ -180,79 +182,8 @@ export const DocumentosPage = () => {
       if (res.status === 'ok') {
         let fetchedDocs = res.pedidos || [];
 
-        // Consultar el estado de preparación exacto de los pedidos mostrados en pantalla mediante batch
-        const allDocEntries = [];
-        const allDocNums = [];
-        fetchedDocs.forEach(d => {
-          if (d.DOCENTRY) allDocEntries.push(d.DOCENTRY);
-          if (d.DOCNUM) allDocNums.push(d.DOCNUM);
-        });
-
-        if (allDocEntries.length > 0) {
-          try {
-            const resBatch = await client.post('/docs/preparadas/batch', {
-              docentries: allDocEntries,
-              docnums: allDocNums
-            });
-
-            if (resBatch.status === 'ok' && resBatch.preparadas_por_doc) {
-              const prepMap = resBatch.preparadas_por_doc;
-
-              fetchedDocs = fetchedDocs.map(doc => {
-                const de = String(doc.DOCENTRY || '').trim();
-                const dn = String(doc.DOCNUM || '').trim();
-                const docPreps = prepMap[de] || prepMap[dn] || [];
-
-                if (docPreps.length > 0) {
-                  const hasSemi = docPreps.some(p => p.U_Semi === 'Y') || docPreps.length > 0;
-                  const prepQtyByLine = {};
-                  docPreps.forEach(p => {
-                    const key = `${p.U_PedidoLine}_${(p.U_ItemCode || '').trim().toUpperCase()}`;
-                    prepQtyByLine[key] = (prepQtyByLine[key] || 0) + (Number(p.U_Quantity) || 0);
-                  });
-
-                  const lines = doc.LINEAS || doc.DocumentLines || [];
-                  let fullyPrepCount = 0;
-                  let partiallyPrepCount = 0;
-
-                  lines.forEach((l, idx) => {
-                    const lNum = l.LINENUM ?? l.LINE_NUM ?? l.LineNum ?? idx;
-                    const lItem = (l.ITEMCODE || l.ItemCode || '').trim().toUpperCase();
-                    const reqQ = Number(l.QUANTITY || l.Quantity || 0);
-                    const key = `${lNum}_${lItem}`;
-                    let prepQ = prepQtyByLine[key] || 0;
-                    if (prepQ === 0) {
-                      prepQ = Object.entries(prepQtyByLine)
-                        .filter(([k]) => k.endsWith(`_${lItem}`))
-                        .reduce((sum, [, v]) => sum + v, 0);
-                    }
-
-                    if (reqQ > 0 && prepQ >= reqQ) {
-                      fullyPrepCount += 1;
-                    } else if (prepQ > 0) {
-                      partiallyPrepCount += 1;
-                    }
-                  });
-
-                  const totalLines = lines.length;
-                  const isSemiPrep = hasSemi || partiallyPrepCount > 0 || (fullyPrepCount > 0 && fullyPrepCount < totalLines) || (fullyPrepCount === 0 && docPreps.length > 0);
-                  const isFullPrep = !isSemiPrep && fullyPrepCount === totalLines && totalLines > 0 && partiallyPrepCount === 0;
-
-                  return {
-                    ...doc,
-                    IS_SEMI_PREPARADO: isSemiPrep,
-                    IS_COMPLETAMENTE_PREPARADO: isFullPrep,
-                    CUENTA_PREPARADO: fullyPrepCount,
-                    SGA_PREPARADAS: docPreps
-                  };
-                }
-                return doc;
-              });
-            }
-          } catch (batchErr) {
-            console.error('Error fetching batch preparadas:', batchErr);
-          }
-        }
+        // El backend ya calcula IS_SEMI_PREPARADO, IS_COMPLETAMENTE_PREPARADO y CUENTA_PREPARADO
+        // dentro del endpoint /api/docs/<objtype>, por lo que no se necesita un batch adicional.
 
         const clientTerm = (currentFilters.cliente || '').trim().toLowerCase();
         const docnumTerm = (currentFilters.search_docnum || '').replace('#', '').trim().toLowerCase();

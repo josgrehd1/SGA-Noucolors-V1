@@ -129,7 +129,7 @@ class DocsService:
                     for cabecera in cabeceras:
                         de_str = str(cabecera.get("DOCENTRY") or '').strip()
                         dn_str = str(cabecera.get("DOCNUM") or '').strip()
-                        
+
                         raw_lines = prep_by_entry.get(de_str, []) + prep_by_entry.get(dn_str, [])
                         seen_ids = set()
                         sga_lines = []
@@ -143,8 +143,8 @@ class DocsService:
 
                         if sga_lines:
                             has_semi = any(str(r.get('U_Semi', '')).upper() == 'Y' for r in sga_lines)
-                            
-                            # Agrupar cantidades preparadas por línea y artículo
+
+                            # Agrupar cantidades preparadas por (línea, artículo) — SOLO de este pedido
                             prep_qty_by_line = defaultdict(float)
                             for r in sga_lines:
                                 line_key = (r.get('U_PedidoLine'), str(r.get('U_ItemCode', '')).strip().upper())
@@ -156,13 +156,22 @@ class DocsService:
                             partially_prep_count = 0
 
                             for l in order_lines:
-                                l_num = l.get('LineNum') or l.get('LINENUM') or l.get('LINE_NUM')
+                                # Intentar resolver el número de línea con todos los nombres posibles
+                                l_num = l.get('LINENUM') if l.get('LINENUM') is not None else \
+                                        l.get('LINE_NUM') if l.get('LINE_NUM') is not None else \
+                                        l.get('LineNum')
                                 l_item = str(l.get('ItemCode') or l.get('ITEMCODE') or '').strip().upper()
                                 req_q = float(l.get('Quantity') or l.get('QUANTITY') or 0)
-                                
+
+                                # Buscar exactamente por (linenum, itemcode) de ESTE pedido — sin fallback inter-pedido
                                 prep_q = prep_qty_by_line.get((l_num, l_item), 0)
-                                if prep_q <= 0:
-                                    prep_q = sum(v for k, v in prep_qty_by_line.items() if k[1] == l_item)
+
+                                # Fallback acotado: solo por itemcode dentro de ESTE pedido (no cruza a otros)
+                                if prep_q <= 0 and l_item:
+                                    prep_q = sum(
+                                        v for k, v in prep_qty_by_line.items()
+                                        if k[1] == l_item
+                                    )
 
                                 if req_q > 0 and prep_q >= req_q:
                                     fully_prep_count += 1

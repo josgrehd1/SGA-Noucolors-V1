@@ -1,6 +1,8 @@
 # pyrefly: ignore [missing-import]
 from flask import current_app, jsonify, session
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import socket
 
 class ServiceLayerHandler:
@@ -9,6 +11,17 @@ class ServiceLayerHandler:
         self.company = None
         # Diccionario de sesiones máster por empresa: { company_db: session_id }
         self._master_sessions = {}
+
+        # Sesión HTTP reutilizable con Keep-Alive y connection pooling hacia SAP Service Layer.
+        # Elimina la apertura/cierre de socket TCP + handshake TLS por cada petición.
+        self._http_session = requests.Session()
+        retry_strategy = Retry(
+            total=0,          # Sin reintentos automáticos — la lógica de relogueo ya los gestiona
+            raise_on_status=False
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy, pool_connections=4, pool_maxsize=10)
+        self._http_session.mount('https://', adapter)
+        self._http_session.mount('http://', adapter)
 
     def init_app(self, app):
         self.url_base = app.config.get('SAP_SL_URL', 'https://192.168.1.156:50000/b1s/v2/')
@@ -42,7 +55,7 @@ class ServiceLayerHandler:
         if cached_session:
             ping_url = f"{url_base.rstrip('/')}/CompanyService_GetAdminInfo"
             try:
-                res = requests.post(ping_url, cookies={"B1SESSION": cached_session}, verify=False, timeout=5)
+                res = self._http_session.post(ping_url, cookies={"B1SESSION": cached_session}, verify=False, timeout=5)
                 if res.status_code == 200:
                     log.info(f"[MasterSession] Sesión cacheada válida para {db}")
                     return cached_session
@@ -62,7 +75,7 @@ class ServiceLayerHandler:
         }
         log.info(f"[MasterSession] Intentando login en {url} con DB={db}, User={master_user}")
         try:
-            res = requests.post(url, json=payload, verify=False, timeout=10)
+            res = self._http_session.post(url, json=payload, verify=False, timeout=10)
             if res.status_code == 200:
                 data = res.json()
                 new_session = data.get('SessionId')
@@ -88,7 +101,7 @@ class ServiceLayerHandler:
             "Password": password
         }
         try:
-            res = requests.post(url, json=payload, verify=False, timeout=10)
+            res = self._http_session.post(url, json=payload, verify=False, timeout=10)
             if res.status_code == 200:
                 data = res.json()
                 session_id = data.get('SessionId')
@@ -118,7 +131,7 @@ class ServiceLayerHandler:
         sap_cookie = session.get('sap_session') if session else None
         if sap_cookie:
             try:
-                requests.post(url, cookies={"B1SESSION": sap_cookie}, verify=False, timeout=5)
+                self._http_session.post(url, cookies={"B1SESSION": sap_cookie}, verify=False, timeout=5)
             except Exception:
                 pass
 
@@ -145,7 +158,8 @@ class ServiceLayerHandler:
         if params:
             kwargs["params"] = params
 
-        res = requests.request(method, **kwargs)
+        # Usar la sesión persistente para HTTP Keep-Alive (reutiliza conexión TCP/TLS)
+        res = self._http_session.request(method, **kwargs)
 
         if res.status_code == 401 or (res.status_code not in (200, 201, 204) and "301" in res.text):
             master_token = self.ensure_master_session()
@@ -153,19 +167,19 @@ class ServiceLayerHandler:
                 kwargs["cookies"] = {"B1SESSION": master_token}
                 if session:
                     session['sap_session'] = master_token
-                res = requests.request(method, **kwargs)
+                res = self._http_session.request(method, **kwargs)
             else:
                 user = (session.get('sap_user') or session.get('sap_username')) if session else None
                 password = session.get('sap_password') if session else None
-                
+
                 if user and password:
                     company_db = session.get('company_db') if session else None
                     login_res = self.login(user, password, company_db=company_db)
-                    
+
                     if login_res.get("status") == "ok":
                         kwargs["cookies"] = {"B1SESSION": session.get('sap_session')}
-                        res = requests.request(method, **kwargs)
-        
+                        res = self._http_session.request(method, **kwargs)
+
         return res
 
     def post(self, resource, payload, master_session=None):
@@ -329,6 +343,43 @@ class ServiceLayerHandler:
             if key == 'raw':
                 # Filtro OData raw: se usa tal cual, sin modificaciones
                 clauses.append(str(val))
+            elif key == 'multiple':
+                # Búsqueda OR entre múltiples campos con el mismo valor.
+                # Uso: {"multiple": {"CardCode": query, "CardName": query}}
+                # Genera: (CardCode eq 'X' or CardName eq 'X')
+                if isinstance(val, dict):
+                    or_parts = []
+                    for field, fval in val.items():
+                        if fval is None or fval == '':
+                            continue
+                        fval_fmt = fval if isinstance(fval, (int, float)) else f"'{fval}'"
+                        or_parts.append(f"contains({field}, {fval_fmt})")
+                    if or_parts:
+                        clauses.append(f"({' or '.join(or_parts)})")
+            elif key == 'multipleExact':
+                # Búsqueda OR exacta entre múltiples campos con el mismo valor.
+                # Uso: {"multipleExact": {"ItemCode": val, "BarCode": val}}
+                # Genera: (ItemCode eq 'X' or BarCode eq 'X')
+                if isinstance(val, dict):
+                    or_parts = []
+                    for field, fval in val.items():
+                        if fval is None or fval == '':
+                            continue
+                        fval_fmt = fval if isinstance(fval, (int, float)) else f"'{fval}'"
+                        or_parts.append(f"{field} eq {fval_fmt}")
+                    if or_parts:
+                        clauses.append(f"({' or '.join(or_parts)})")
+            elif key.endswith('__or'):
+                # Filtro OR sobre un único campo con múltiples valores posibles.
+                # Uso: {"CardType__or": ["C", "L"]}
+                # Genera: (CardType eq 'C' or CardType eq 'L')
+                field = key[:-4]
+                if isinstance(val, list) and val:
+                    or_parts = []
+                    for v in val:
+                        v_fmt = v if isinstance(v, (int, float)) else f"'{v}'"
+                        or_parts.append(f"{field} eq {v_fmt}")
+                    clauses.append(f"({' or '.join(or_parts)})")
             elif key.endswith('__enum'):
                 # Valores enum de SAP OData (ej. dDocument_Delivery) — SIN comillas
                 field = key[:-6]

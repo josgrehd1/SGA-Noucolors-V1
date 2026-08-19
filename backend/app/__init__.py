@@ -22,7 +22,7 @@ FRONTEND_DIST = os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', '
 
 def create_app():
     register_binaries()
-    app = Flask(__name__, static_folder=FRONTEND_DIST, static_url_path='/')
+    app = Flask(__name__, static_folder=None)
     Compress(app)
     app.config.from_object('config.Config')
     warnings.simplefilter('ignore', InsecureRequestWarning)
@@ -32,27 +32,6 @@ def create_app():
 
     # Configuración de Sesión
     Session(app)
-
-    # Filtros Jinja2 para Documentos y Albaranes PDF
-    from datetime import datetime
-
-    @app.template_filter('format_date')
-    def format_date(value):
-        if not value:
-            return ""
-        try:
-            date_str = str(value).split('T')[0]
-            date_obj = datetime.strptime(date_str, '%Y-%m-%d')
-            return date_obj.strftime('%d/%m/%Y')
-        except (ValueError, TypeError, IndexError):
-            return value
-
-    @app.template_filter('format_currency')
-    def format_currency(value):
-        try:
-            return "{:,.2f}".format(float(value)).replace(",", "X").replace(".", ",").replace("X", ".")
-        except (ValueError, TypeError):
-            return value
 
     # Logging
     log_dir = os.path.join(app.root_path, 'logs')
@@ -107,10 +86,11 @@ def create_app():
     @app.route('/<path:path>')
     def serve_react(path):
         dist = FRONTEND_DIST
-        # Intentar servir el archivo estático si existe (JS, CSS, imágenes, etc.)
-        if path and os.path.exists(os.path.join(dist, path)):
+        file_path = os.path.join(dist, path)
+        # Intentar servir el archivo estático si existe físicamente (JS, CSS, imágenes, etc.)
+        if path and os.path.isfile(file_path):
             return send_from_directory(dist, path)
-        # Para todas las rutas de React Router, devolver index.html
+        # Para todas las rutas virtuales de React Router, devolver index.html
         index_path = os.path.join(dist, 'index.html')
         if os.path.exists(index_path):
             return send_file(index_path)

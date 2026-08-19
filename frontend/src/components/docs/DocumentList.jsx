@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Row, Col, Card, Tag, Button, Space, Typography, Empty, Spin } from 'antd';
+import { Row, Col, Card, Tag, Button, Space, Typography, Empty, Spin, Tooltip } from 'antd';
 import {
   FileTextOutlined,
   CalendarOutlined,
@@ -44,33 +44,40 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
         const gestionadas = Number(doc.CUENTA_PREPARADO) || 0;
         const disponibles = Number(doc.CUENTA_DISPONIBLE) || 0;
 
-        // Detección directa e infalible de stock en PDTE / Semi en cualquier línea del pedido
+        // Detección de stock en PDTE / Semi en cualquier línea del pedido (puede ser de otro pedido)
         const hasLineInPdteOrSemi = (doc.LINEAS || []).some(line => {
           const rawUbis = typeof line.UBICACIONES === 'string' ? line.UBICACIONES : JSON.stringify(line.UBICACIONES || '');
           const hasPdte = rawUbis.toUpperCase().includes('PDTE');
           const binStd = String(line.BIN_STD || line.BinStd || line.U_BinCode || '').toUpperCase();
           const isBinStdPdte = binStd.includes('PDTE');
           const ctdPrep = Number(line.CTD_PREPARADA || 0);
-
           return hasPdte || isBinStdPdte || ctdPrep > 0;
         });
 
         const isPurchase = String(doc.OBJTYPE || doc.ObjType) === '22';
         const isTransfer = String(doc.OBJTYPE || doc.ObjType) === '1250000001' || String(doc.OBJTYPE || doc.ObjType) === '67';
-        const isSemi = !isPurchase && !isTransfer && (
-                       Boolean(doc.IS_SEMI_PREPARADO) ||
-                       hasLineInPdteOrSemi ||
-                       (doc.SGA_PREPARADAS && doc.SGA_PREPARADAS.length > 0) ||
-                       (gestionadas > 0 && gestionadas < totalLineas)
+
+        // Semi-prep PROPIO: NC_SGAWEB_DOCS tiene registros para ESTE pedido concreto
+        const isSemiPropio = !isPurchase && !isTransfer && (
+          Boolean(doc.IS_SEMI_PREPARADO) ||
+          (doc.SGA_PREPARADAS && doc.SGA_PREPARADAS.length > 0) ||
+          (gestionadas > 0 && gestionadas < totalLineas)
         );
+
+        // Stock en PDTE AJENO: el artículo está en zona PDTE pero fue semipreparado para otro pedido
+        const isSemiAjeno = !isPurchase && !isTransfer && !isSemiPropio && hasLineInPdteOrSemi;
+
+        const isSemi = isSemiPropio || isSemiAjeno;
 
         const isPrep = !isSemi && (Boolean(doc.IS_COMPLETAMENTE_PREPARADO) || (totalLineas > 0 && gestionadas >= totalLineas));
         const isSinStk = totalLineas > 0 && disponibles === 0 && gestionadas === 0 && !isSemi;
         const isStkParcial = totalLineas > 0 && disponibles > 0 && disponibles < totalLineas && gestionadas === 0 && !isSemi;
 
         let stateKey = 'disponible';
-        if (isSemi) {
+        if (isSemiPropio) {
           stateKey = 'semi_preparado';
+        } else if (isSemiAjeno) {
+          stateKey = 'stock_pdte_ajeno';
         } else if (isPrep) {
           stateKey = 'preparado';
         } else if (isSinStk) {
@@ -141,6 +148,19 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
             label: '🔵 Disponible',
             labelColor: '#0d6efd',
             labelBg: '#e7f1ff'
+          },
+          stock_pdte_ajeno: {
+            borderTop: '#7c3aed', // Violeta
+            badgeBg: '#f5f3ff',
+            badgeBorder: '#c4b5fd',
+            badgeColor: '#6d28d9',
+            kpiBg: '#f5f3ff',
+            kpiBorder: '#c4b5fd',
+            kpiColor: '#6d28d9',
+            label: '🟣 En Zona Prep',
+            labelColor: '#6d28d9',
+            labelBg: '#f5f3ff',
+            tooltip: 'Uno o más artículos de este pedido tienen stock en zona de preparación (01-PDTE). Puede estar reservado para otro pedido.'
           }
         };
 
@@ -197,20 +217,30 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
                     </span>
 
                     {/* Tag de Estado Explicativo */}
-                    <span
-                      style={{
-                        backgroundColor: theme.labelBg,
-                        border: `1px solid ${theme.badgeBorder}`,
-                        color: theme.labelColor,
-                        fontWeight: 800,
-                        fontSize: '0.74rem',
-                        padding: '2px 6px',
-                        borderRadius: 6,
-                        whiteSpace: 'nowrap'
-                      }}
+                    <Tooltip
+                      title={theme.tooltip || null}
+                      placement="top"
+                      color="#5b21b6"
                     >
-                      {theme.label}
-                    </span>
+                      <span
+                        style={{
+                          backgroundColor: theme.labelBg,
+                          border: `1px solid ${theme.badgeBorder}`,
+                          color: theme.labelColor,
+                          fontWeight: 800,
+                          fontSize: '0.74rem',
+                          padding: '2px 6px',
+                          borderRadius: 6,
+                          whiteSpace: 'nowrap',
+                          cursor: theme.tooltip ? 'help' : 'default'
+                        }}
+                      >
+                        {theme.label}
+                        {theme.tooltip && (
+                          <InfoCircleOutlined style={{ marginLeft: 4, fontSize: '0.7rem', opacity: 0.7 }} />
+                        )}
+                      </span>
+                    </Tooltip>
                   </div>
 
                   <Space size={6}>

@@ -1,13 +1,15 @@
 import copy
-from flask import jsonify, session, render_template, current_app
+import os
+from flask import jsonify, session, current_app
 from app.data.sap_repository import SapRepository
 from app.services.stock_service import StockService
-from app.utils.extensions import print_handler
+from app.utils.extensions import print_handler, sl_handler
 from app.utils.sap_series_mapper import SapSeriesMapper
 
 class AlbaranService:
     """
     Servicio para listado, consulta, generación e IMPRESIÓN PDF de Albaranes de Entrega (DeliveryNotes).
+    Reproduce con total fidelidad el formato, cálculos y estructura del SGA original.
     """
 
     @staticmethod
@@ -60,61 +62,125 @@ class AlbaranService:
         return sap_filter
 
     @staticmethod
-    def get_albaran_detalle(docentry):
-        resultado = SapRepository.get_data("DeliveryNotes", id=int(docentry), expand=["BusinessPartner"])
+    def get_albaran_detalle(docentry, master_session=None):
+        """
+        Obtiene y procesa un albarán completo con todas sus cabeceras, líneas especiales,
+        direcciones de envío/fiscal formateadas y condiciones de pago calculadas (igual que SGA original).
+        """
+        m_session = master_session or sl_handler.ensure_master_session()
+
+        resultado = SapRepository.get_data("DeliveryNotes", id=int(docentry), expand=["BusinessPartner"], master_session=m_session)
+        
         if resultado.get('status') != "ok" or not resultado.get('data'):
-            resultado = SapRepository.get_data("DeliveryNotes", id=int(docentry))
+            # Fallback en 2 pasos si la primera consulta no devuelve datos
+            resultado = SapRepository.get_data("DeliveryNotes", id=int(docentry), master_session=m_session)
             if resultado.get('status') != "ok" or not resultado.get('data'):
-                raise ValueError(f"No se encontraron datos para el albarán #{docentry}")
-            
+                err_detail = resultado.get('message', 'No se obtuvieron datos de SAP')
+                raise ValueError(f"No se encontraron datos para el albarán #{docentry}. ({err_detail})")
+                
             albaran = resultado['data'][0]
             card_code = albaran.get('CardCode')
             if card_code:
-                bp_res = SapRepository.get_data("BusinessPartners", id=card_code)
+                bp_res = SapRepository.get_data("BusinessPartners", id=card_code, master_session=m_session)
                 if bp_res.get('status') == 'ok' and bp_res.get('data'):
                     albaran['BusinessPartner'] = bp_res['data'][0]
         else:
             albaran = resultado['data'][0]
 
         albaran["UnifiedLines"] = AlbaranService._consolidar_lineas(albaran)
-        AlbaranService._procesar_direccion_envio(albaran)
+        AlbaranService._add_machine_data(albaran["UnifiedLines"], master_session=m_session)
+        AlbaranService._procesar_direccion_envio(albaran, master_session=m_session)
+
         return albaran
 
     @staticmethod
     def _consolidar_lineas(data):
-        lineas = data.get("DocumentLines", [])
-        if not lineas:
-            return []
+        """
+        Consolida líneas normales (DocumentLines) y líneas especiales/texto (DocumentSpecialLines)
+        ordenándolas por LineNum y asegurando LineType para la plantilla PDF del albarán.
+        """
+        unified = {}
+        # 1. Procesamos las líneas normales
+        for line in data.get("DocumentLines", []):
+            num = line.get("LineNum", 0)
+            if num not in unified:
+                unified[num] = []
+            line_copy = copy.deepcopy(line)
+            if "LineType" not in line_copy or not line_copy.get("LineType"):
+                line_copy["LineType"] = "dlt_Regular"
+            unified[num].append(line_copy)
 
-        lineas_agrupadas = {}
-        for l in lineas:
-            key = (l.get('ItemCode'), l.get('ItemDescription'), l.get('Price'))
-            if key not in lineas_agrupadas:
-                lineas_agrupadas[key] = copy.deepcopy(l)
-                lineas_agrupadas[key]['Quantity'] = float(l.get('Quantity', 0) or 0)
-            else:
-                lineas_agrupadas[key]['Quantity'] += float(l.get('Quantity', 0) or 0)
+        # 2. Procesamos las líneas especiales (textos, subtotales)
+        for special in data.get("DocumentSpecialLines", []):
+            num = special.get("AfterLineNumber", 0)
+            if num not in unified:
+                unified[num] = []
+            special_copy = copy.deepcopy(special)
+            if "LineType" not in special_copy or not special_copy.get("LineType"):
+                special_copy["LineType"] = "dslt_Text"
+            unified[num].append(special_copy)
 
-        lines_list = list(lineas_agrupadas.values())
-        AlbaranService._add_machine_data(lines_list)
-        return lines_list
+        # 3. Aplanamos el diccionario resultante en una sola lista ordenada
+        final_list = []
+        for num in sorted(unified.keys()):
+            final_list.extend(unified[num])
+
+        return final_list
 
     @staticmethod
-    def _add_machine_data(lines):
-        for line in lines:
-            item_code = line.get('ItemCode', '')
-            if item_code and item_code.startswith('MAQ'):
-                try:
-                    res = SapRepository.get_data("Items", id=item_code, selection=["U_TipoMaquina", "U_Modelo"])
-                    if res.get('status') == 'ok' and res.get('data'):
-                        item_info = res['data'][0] if isinstance(res['data'], list) else res['data']
-                        line['U_TipoMaquina'] = item_info.get('U_TipoMaquina', '')
-                        line['U_Modelo'] = item_info.get('U_Modelo', '')
-                except Exception:
-                    pass
+    def _add_machine_data(lines, master_session=None):
+        """
+        Enriquece las líneas de máquinas (MAQ) con metadatos técnicos y stock.
+        """
+        if not lines:
+            return lines
+
+        maq_codes = [x.get('ItemCode') for x in lines if x.get('ItemCode') and str(x.get('ItemCode')).startswith('MAQ')]
+        if not maq_codes:
+            return lines
+
+        try:
+            items_info = SapRepository.get_data(
+                resource="Items", 
+                selection=[
+                    "ItemCode", 
+                    "U_TipoMaquina",
+                    "U_Modelo",
+                    "U_MAC_Descripcion", 
+                    "U_MAC_FichaOnline", 
+                    "U_MAC_Video", 
+                    "U_MAC_Catalogo", 
+                    "U_MAC_Img"
+                ],
+                filter={"ItemCode__in": list(set(maq_codes))},
+                master_session=master_session,
+                all_results=True,
+                inline_count=False
+            )
+            
+            stock_disponible = StockService.get_stock_disponible(maq_codes)
+            
+            mapa_meta = {x['ItemCode']: x for x in items_info.get('data', []) if 'ItemCode' in x}
+            for row in lines:
+                codigo = row.get('ItemCode')
+                if codigo in mapa_meta:
+                    extras = mapa_meta[codigo]
+                    datos_a_fusionar = {k: v for k, v in extras.items() if k != 'ItemCode'}
+                    row.update(datos_a_fusionar)
+
+                if codigo in stock_disponible:
+                    row['Stock'] = stock_disponible.get(codigo, 0)
+        except Exception:
+            pass
+
+        return lines
 
     @staticmethod
-    def _procesar_direccion_envio(albaran):
+    def _procesar_direccion_envio(albaran, master_session=None):
+        """
+        Construye la cabecera calculada y las direcciones de envío y facturación
+        exactamente igual que el SGA original.
+        """
         card_code = albaran.get('CardCode', '')
         ship_to_code = albaran.get('ShipToCode', '')
         contact_person_code = albaran.get('ContactPersonCode')
@@ -126,11 +192,19 @@ class AlbaranService:
             try:
                 s_info = SapSeriesMapper.get_series_info_by_id(series_id)
                 series_name = s_info.get('Name') or ""
+                if not series_name:
+                    series_res = SapRepository.get_data("Series", id=int(series_id), master_session=master_session)
+                    if series_res.get('status') == 'ok' and series_res.get('data'):
+                        raw_s = series_res['data']
+                        s_data = raw_s[0] if isinstance(raw_s, list) and len(raw_s) > 0 else raw_s
+                        if isinstance(s_data, dict):
+                            series_name = s_data.get('Name') or s_data.get('SeriesName') or ""
             except Exception:
                 pass
 
-        albaran['num_doc_completo'] = f"{series_name} - {doc_num}" if series_name else str(doc_num)
+        num_doc_completo = f"{series_name} - {doc_num}" if series_name else str(doc_num)
 
+        # Buscar BusinessPartner completo con BPAddresses y ContactEmployees
         bp = albaran.get('BusinessPartner') or {}
         bp_addresses = bp.get('BPAddresses', [])
         contact_employees = bp.get('ContactEmployees', [])
@@ -138,7 +212,7 @@ class AlbaranService:
         if not bp_addresses or not contact_employees:
             if card_code:
                 try:
-                    bp_res = SapRepository.get_data("BusinessPartners", id=card_code)
+                    bp_res = SapRepository.get_data("BusinessPartners", id=card_code, master_session=master_session)
                     if bp_res.get('status') == 'ok' and bp_res.get('data'):
                         bp = bp_res['data'][0]
                         bp_addresses = bp.get('BPAddresses', [])
@@ -147,7 +221,19 @@ class AlbaranService:
                 except Exception:
                     pass
 
+        lic_trad_num = albaran.get('FederalTaxID') or bp.get('FederalTaxID') or albaran.get('LicTradNum') or bp.get('LicTradNum', '')
         ext = albaran.get('AddressExtension') or {}
+
+        # 1. Obtener Provincias / Regiones de SAP
+        regiones = []
+        try:
+            res_reg = SapRepository.get_data("States", all_results=True, master_session=master_session, inline_count=False)
+            if res_reg.get('status') == 'ok':
+                regiones = res_reg.get('data', [])
+        except Exception:
+            pass
+
+        # 2. Buscar la dirección de envío específica en CRD1 (BPAddresses)
         dir_envio_crd1 = next((a for a in bp_addresses if a.get('AddressName') == ship_to_code and (str(a.get('AddressType')).endswith('ShipTo') or a.get('AddressType') == 'S')), None)
         if not dir_envio_crd1:
             dir_envio_crd1 = next((a for a in bp_addresses if str(a.get('AddressType')).endswith('ShipTo') or a.get('AddressType') == 'S'), None)
@@ -158,18 +244,22 @@ class AlbaranService:
         raw_state = (dir_envio_crd1.get('State') if dir_envio_crd1 else None) or ext.get('ShipToCounty') or ext.get('ShipToState', '')
         country = (dir_envio_crd1.get('Country') if dir_envio_crd1 else None) or ext.get('ShipToCountry', 'ES')
 
+        state_obj = next((e for e in regiones if e.get('Code') == raw_state and e.get('Country') == country), None)
+        state_name = state_obj.get('Name') if state_obj else raw_state
+
         if street:
             parts = [street.strip().upper()]
             city_part = f"{zipcode} {city.strip().upper()}".strip()
             if city_part: parts.append(city_part)
-            if raw_state: parts.append(str(raw_state).strip().upper())
+            if state_name: parts.append(str(state_name).strip().upper())
             if country:
                 c_name = "ESPAÑA" if str(country).strip().upper() in ['ES', 'ESPAÑA'] else str(country).strip().upper()
                 parts.append(c_name)
-            albaran['direccion_envio_str'] = " - ".join(parts)
+            direccion_envio_str = " - ".join(parts)
         else:
-            albaran['direccion_envio_str'] = albaran.get('Address2', '')
+            direccion_envio_str = albaran.get('Address2', '')
 
+        # Contacto: CRD1.StreetNo / AddressExtension.ShipToStreetNo (>= 3 chars) > OCPR (CN.name por CNTCTCODE)
         street_no_crd1 = (dir_envio_crd1.get('StreetNo') if dir_envio_crd1 else '') or ''
         street_no_ext = (ext.get('ShipToStreetNo') or '')
         street_no = str(street_no_crd1 or street_no_ext or '').strip()
@@ -178,16 +268,19 @@ class AlbaranService:
         cn_name = contacto_obj.get('Name', '') if contacto_obj else (bp.get('ContactPerson', '') or '')
         cn_tel = (contacto_obj.get('Phone1') or contacto_obj.get('Tel1') or contacto_obj.get('MobilePhone', '')) if contacto_obj else (bp.get('Phone1', '') or '')
 
-        albaran['contacto_final'] = street_no if len(street_no) >= 3 else cn_name
+        contacto_final = street_no if len(street_no) >= 3 else cn_name
 
+        # Teléfono: CRD1.BuildingFloorRoom / AddressExtension.ShipToBuilding (>= 3 chars) > OCPR (CN.Tel1)
         building_crd1 = (dir_envio_crd1.get('BuildingFloorRoom') if dir_envio_crd1 else '') or ''
         building_ext = (ext.get('ShipToBuilding') or '')
         building = str(building_crd1 or building_ext or '').strip()
 
-        albaran['telefono_final'] = building if len(building) >= 3 else cn_tel
-        albaran['horario_final'] = (dir_envio_crd1.get('U_MAC_Horario') if dir_envio_crd1 else '') or ext.get('U_MAC_HorarioS', '') or ext.get('U_MAC_Horario', '')
+        telefono_final = building if len(building) >= 3 else cn_tel
 
-        # Dirección de Factura
+        # Horario: CRD1.U_MAC_Horario > AddressExtension.U_MAC_HorarioS
+        horario_final = (dir_envio_crd1.get('U_MAC_Horario') if dir_envio_crd1 else '') or ext.get('U_MAC_HorarioS', '') or ext.get('U_MAC_Horario', '')
+
+        # 3. DIRECCIÓN FISCAL (CRD1 AdresType = 'B' y Address = 'Domicilio')
         dir_fact_crd1 = next((a for a in bp_addresses if (str(a.get('AddressType')).endswith('BillTo') or a.get('AddressType') == 'B') and a.get('AddressName') == 'Domicilio'), None)
         if not dir_fact_crd1:
             dir_fact_crd1 = next((a for a in bp_addresses if (str(a.get('AddressType')).endswith('BillTo') or a.get('AddressType') == 'B')), None)
@@ -199,61 +292,128 @@ class AlbaranService:
             f_raw_state = dir_fact_crd1.get('State', '').strip()
             f_country = dir_fact_crd1.get('Country', 'ES').strip()
 
+            f_state_obj = next((e for e in regiones if e.get('Code') == f_raw_state and e.get('Country') == f_country), None)
+            f_state_name = f_state_obj.get('Name') if f_state_obj else f_raw_state
+
             parts_f = [f_street]
             city_p = f"{f_zip} {f_city}".strip()
             if city_p: parts_f.append(city_p)
-            if f_raw_state: parts_f.append(str(f_raw_state).strip().upper())
+            if f_state_name: parts_f.append(str(f_state_name).strip().upper())
             if f_country:
                 c_n = "ESPAÑA" if str(f_country).strip().upper() in ['ES', 'ESPAÑA'] else str(f_country).strip().upper()
                 parts_f.append(c_n)
-            albaran['dir_factura_str'] = " - ".join(parts_f)
+            dir_factura_str = " - ".join(parts_f)
         else:
-            albaran['dir_factura_str'] = albaran.get('Address', '')
+            dir_factura_str = albaran.get('Address', '')
 
-        # Bultos
-        albaran['bultos'] = albaran.get('U_MAC_OBSVSTOCK') or albaran.get('NumberOfPackages') or albaran.get('U_BULTOS') or 1
+        # Bultos desde U_MAC_OBSVSTOCK / U_MAC_ObsVSTOCK / NumberOfPackages / U_BULTOS (por defecto 1)
+        raw_bultos = None
+        for key in ['U_MAC_OBSVSTOCK', 'U_MAC_ObsVSTOCK', 'NumberOfPackages', 'U_BULTOS', 'U_MAC_Bultos']:
+            val = albaran.get(key)
+            if val is not None and str(val).strip() not in ['', '0']:
+                raw_bultos = val
+                break
+
+        if raw_bultos is None:
+            for k, v in albaran.items():
+                if k.upper() in ['U_MAC_OBSVSTOCK', 'NUMBEROFPACKAGES', 'U_BULTOS', 'U_MAC_BULTOS'] and v is not None:
+                    if str(v).strip() not in ['', '0']:
+                        raw_bultos = v
+                        break
+
+        bultos_val = "1"
+        if raw_bultos is not None and str(raw_bultos).strip():
+            try:
+                b_num = float(str(raw_bultos).strip())
+                bultos_val = str(int(b_num)) if b_num.is_integer() else str(b_num)
+            except ValueError:
+                bultos_val = str(raw_bultos).strip()
+
+        albaran['CabeceraCalculada'] = {
+            'CardCode': card_code,
+            'CardName': albaran.get('CardName', ''),
+            'LicTradNum': lic_trad_num,
+            'DirFactura': dir_factura_str,
+            'NumDocCompleto': num_doc_completo,
+            'NumAtCard': albaran.get('NumAtCard') or albaran.get('NUMATCARD') or albaran.get('REF_ALBARAN') or '',
+            'ShipToCode': ship_to_code,
+            'DireccionEnvio': direccion_envio_str,
+            'Contacto': contacto_final,
+            'Telefono': telefono_final,
+            'Horario': horario_final,
+            'Bultos': bultos_val
+        }
+        albaran['DirEnvioCalculada'] = albaran['CabeceraCalculada']
+        AlbaranService._procesar_condiciones_pago(albaran, bp, master_session=master_session)
 
     @staticmethod
-    def generar_pdf_bytes(albaran):
+    def _procesar_condiciones_pago(albaran, bp, master_session=None):
         """
-        Genera el buffer de bytes del PDF del albarán procesando el HTML/CSS con WeasyPrint.
+        Calcula las condiciones de pago (Forma de Pago, Vía de Pago, Domiciliación IBAN)
+        consultando SAP Service Layer.
         """
-        try:
-            from weasyprint import HTML
-            html_string = render_template('documents/albaran_doc.jinja2', albaran=albaran, es_valorado=False)
-            return HTML(string=html_string, base_url=current_app.root_path).write_pdf()
-        except Exception as e:
-            current_app.logger.error(f"Error generando PDF de Albarán: {e}")
-            raise Exception(f"Error generando documento PDF de albarán: {str(e)}")
-
-    @staticmethod
-    def imprimir_albaran(docentry, copies=1):
-        """
-        Genera el PDF del albarán y lo envía al servicio de impresión (SumatraPDF / Impresora PDF por defecto).
-        """
-        albaran = AlbaranService.get_albaran_detalle(docentry)
-        pdf_bytes = AlbaranService.generar_pdf_bytes(albaran)
+        # 1. Forma de Pago + Días Fijos
+        group_num = albaran.get('PaymentGroupCode') or albaran.get('PayTermsGrpCode') or bp.get('PayTermsGrpCode')
+        forma_pago_str = ""
+        if group_num is not None:
+            try:
+                res_p = SapRepository.get_data("PaymentTermsTypes", id=int(group_num), master_session=master_session)
+                if res_p.get('status') == 'ok' and res_p.get('data'):
+                    raw_p = res_p['data']
+                    p_data = raw_p[0] if isinstance(raw_p, list) and len(raw_p) > 0 else raw_p
+                    if isinstance(p_data, dict):
+                        forma_pago_str = p_data.get('PaymentTermsGroupName') or p_data.get('GroupDescription') or ""
+            except Exception:
+                pass
         
-        for _ in range(max(1, int(copies))):
-            success, msg = print_handler.send_pdf_to_printer(pdf_bytes)
-            if not success:
-                return False, msg
-    @staticmethod
-    def _obtener_serie_albaran_equivalente(order_series_id, target_obj_type=15):
-        """
-        Delega en SapSeriesMapper para mantener la lógica de mapeo de series
-        desacoplada del dominio de albaranes.
-        """
-        if not order_series_id:
-            return None
-        return SapSeriesMapper.map_series(
-            src_obj_type=17,
-            src_series_id=int(order_series_id),
-            dst_obj_type=target_obj_type
-        )
+        dias_fijos_list = []
+        bp_payment_dates = bp.get('BPPaymentDates', [])
+        for d in bp_payment_dates:
+            p_date = d.get('PaymentTermsDate')
+            if p_date:
+                dias_fijos_list.append(str(p_date))
+        
+        if dias_fijos_list:
+            dias_str = "Días Fijos: " + ", ".join(dias_fijos_list)
+            forma_pago_str = f"{forma_pago_str} - {dias_str}" if forma_pago_str else dias_str
+
+        # 2. Vía de Pago
+        pay_meth = albaran.get('PaymentMethodCode') or albaran.get('PeymentMethodCode') or bp.get('PeymentMethodCode') or bp.get('PaymentMethodCode')
+        via_pago_str = ""
+        if pay_meth:
+            try:
+                res_m = SapRepository.get_data("WizardPaymentMethods", id=str(pay_meth), master_session=master_session)
+                if res_m.get('status') == 'ok' and res_m.get('data'):
+                    raw_m = res_m['data']
+                    m_data = raw_m[0] if isinstance(raw_m, list) and len(raw_m) > 0 else raw_m
+                    if isinstance(m_data, dict):
+                        via_pago_str = m_data.get('Description') or m_data.get('PaymentMethodName') or str(pay_meth)
+            except Exception:
+                via_pago_str = str(pay_meth)
+
+        # 3. Domiciliación IBAN
+        iban_str = bp.get('HouseBankIBAN') or bp.get('IBAN') or bp.get('DFLIBAN') or ""
+        if not iban_str and bp.get('DefaultBankCode') and bp.get('DefaultAccount'):
+            bank = bp.get('DefaultBankCode', '')
+            branch = bp.get('DefaultBranch', '')
+            account = bp.get('DefaultAccount', '')
+            iban_str = f"{bank} {branch} {account}"
+
+        if iban_str and not iban_str.upper().startswith("IBAN"):
+            iban_str = f"IBAN: {iban_str}"
+
+        albaran['CondicionesPagoCalculadas'] = {
+            'FormaPago': forma_pago_str or "CONTADO",
+            'ViaPago': via_pago_str or "-",
+            'Domiciliacion': iban_str or "-"
+        }
 
     @staticmethod
     def generar_albaran(resource_albaran, doc_original, lineas, mapping_fields):
+        """
+        Genera un Albarán de Entrega (DeliveryNotes) en SAP a partir de las líneas confirmadas en NC_SGAWEB_DOCS.
+        Gestiona el mapeo de ubicaciones bin, reparto de stock y series de documento.
+        """
         fld_bin_from = mapping_fields.get('bin_from')
         fld_bin_to = mapping_fields.get('bin_to')
 
@@ -329,7 +489,6 @@ class AlbaranService:
             bin_payload = []
             dist_num = linea.get('dist_number') or linea.get('U_DistNumber') or linea.get('serial_number') or linea.get('batch_number')
 
-            # Si la línea contiene repartos multi-ubicación explícitos guardados por el usuario
             allocations_list = linea.get('_allocations', [linea])
             if len(allocations_list) > 1:
                 for alloc_entry in allocations_list:
@@ -346,7 +505,6 @@ class AlbaranService:
                             alloc_item["SerialAndBatchNumbersBaseLine"] = 0
                         bin_payload.append(alloc_item)
             elif bin_def and ctd_preparada > 0:
-                # Consultar stock por ubicaciones para este artículo en almacén 01
                 res_stock_all = SapRepository.get_data_from_view(
                     view_name="NC_STOCK_UBICACION_B1SLQuery",
                     filter={"ItemCode": item_code_val, "WhsCode": bin_whs or '01'},
@@ -365,7 +523,6 @@ class AlbaranService:
                 primary_available = stock_by_bin.get(primary_abs, 0)
 
                 if primary_available >= qty_needed or not stock_by_bin:
-                    # La ubicación seleccionada cubre la totalidad
                     alloc = {
                         "BinAbsEntry": primary_abs,
                         "Quantity": qty_needed,
@@ -375,7 +532,6 @@ class AlbaranService:
                         alloc["SerialAndBatchNumbersBaseLine"] = 0
                     bin_payload = [alloc]
                 else:
-                    # Repartir entre la ubicación elegida (ej. 01-PDTE) y el resto de estanterías con stock
                     allocated_so_far = 0.0
                     if primary_available > 0:
                         alloc = {
@@ -406,7 +562,6 @@ class AlbaranService:
                             if rem_needed <= 0:
                                 break
 
-                    # Si no se pudo cubrir con las ubicaciones registradas, asegurar que la suma coincida
                     if not bin_payload:
                         bin_payload = [{
                             "BinAbsEntry": primary_abs,
@@ -425,11 +580,9 @@ class AlbaranService:
             if bin_whs:
                 nueva_linea['WarehouseCode'] = bin_whs
 
-            # Asignar ubicación obligatoria para almacenes con gestión de ubicaciones en SAP (ej. Alm 01)
             if bin_payload:
                 nueva_linea['DocumentLinesBinAllocations'] = bin_payload
 
-            # Si el artículo tiene gestión por número de serie, incluir SerialNumbers
             if dist_num:
                 nueva_linea["SerialNumbers"] = [{
                     "InternalSerialNumber": str(dist_num).strip(),
@@ -448,15 +601,12 @@ class AlbaranService:
                 else:
                     albaran_payload[clave] = copy.deepcopy(valor)
 
-        # Mapear la Serie según U_MAC_Seriepedido del usuario creador (UserSign/OUSR) o Serie del Pedido (ORDR)
         res_series = SapSeriesMapper.resolve_series_by_user_or_order(doc_original, dst_obj_type=15)
         if res_series and res_series.get('dst_series_id'):
             albaran_payload['Series'] = int(res_series['dst_series_id'])
         else:
             albaran_payload.pop('Series', None)
 
-
-        # Inyectar trazabilidad de operario para Acceso Indirecto
         if session.get('sap_employee_id'):
             albaran_payload['DocumentsOwner'] = session.get('sap_employee_id')
             albaran_payload['U_BXPEmpID'] = session.get('sap_employee_id')
@@ -484,3 +634,33 @@ class AlbaranService:
                         SapRepository.update(resource="NC_SGAWEB_DOCS", id=row['DocEntry'], payload={"U_Estado": 'C'})
                 err_msg = "El pedido original ya se encuentra CERRADO o entregado en SAP. Las líneas de preparación en SGA se han actualizado."
             return jsonify({"status": "error", "message": f"Error generando albarán en SAP: {err_msg}"}), res.status_code
+
+    @staticmethod
+    def generar_pdf_bytes(albaran):
+        """
+        Genera el buffer de bytes del PDF del albarán procesando HTML/CSS con WeasyPrint de forma modular.
+        """
+        try:
+            from app.document_generators import AlbaranDocGenerator
+            return AlbaranDocGenerator.generate_pdf_bytes(albaran)
+        except Exception as e:
+            current_app.logger.error(f"Error generando PDF de Albarán: {e}")
+            raise Exception(f"Error generando documento PDF de albarán: {str(e)}")
+
+    @staticmethod
+    def imprimir_albaran(docentry, copies=1):
+        """
+        Genera el PDF del albarán y lo envía a imprimir a la impresora PDF configurada.
+        """
+        try:
+            albaran = AlbaranService.get_albaran_detalle(docentry)
+            pdf_bytes = AlbaranService.generar_pdf_bytes(albaran)
+
+            for _ in range(max(1, copies)):
+                success, msg = print_handler.send_pdf_to_printer(pdf_bytes)
+                if not success:
+                    return False, f"Fallo al enviar a impresora PDF: {msg}"
+
+            return True, f"Albarán #{docentry} enviado a imprimir ({copies} copia/s)."
+        except Exception as e:
+            return False, f"Error imprimiendo albarán #{docentry}: {str(e)}"

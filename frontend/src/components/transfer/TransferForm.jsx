@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Card, Input, InputNumber, Button, Row, Col, Space, Typography, Tag, Spin, message, Alert } from 'antd';
+import React, { useState, useEffect, useRef } from 'react';
+import { Card, Input, InputNumber, Button, Row, Col, Space, Typography, Tag, Spin, message, Modal, Divider } from 'antd';
 import {
   SwapOutlined,
   EnvironmentOutlined,
@@ -8,7 +8,8 @@ import {
   CloseCircleFilled,
   LoadingOutlined,
   ShopOutlined,
-  InfoCircleOutlined
+  InfoCircleOutlined,
+  QuestionCircleOutlined
 } from '@ant-design/icons';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
@@ -39,6 +40,12 @@ const TransferSchema = Yup.object().shape({
 export const TransferForm = () => {
   const [loading, setLoading] = useState(false);
 
+  // Referencias para auto-avance con pistola de escáner
+  const binFromRef = useRef(null);
+  const binToRef = useRef(null);
+  const itemCodeRef = useRef(null);
+  const quantityRef = useRef(null);
+
   // Estados de validación en tiempo real
   const [validatingBinFrom, setValidatingBinFrom] = useState(false);
   const [binFromStatus, setBinFromStatus] = useState(null); // { valid: bool, whs: string, stock: number, msg: string }
@@ -49,6 +56,43 @@ export const TransferForm = () => {
   const [validatingItem, setValidatingItem] = useState(false);
   const [itemStatus, setItemStatus] = useState(null); // { valid: bool, itemCode: string, itemName: string, msg: string }
 
+  useEffect(() => {
+    // Autofocus inicial en Ubicación de Origen al entrar
+    setTimeout(() => {
+      binFromRef.current?.focus();
+    }, 150);
+  }, []);
+
+  const executeTransfer = async (values) => {
+    setLoading(true);
+    try {
+      const payload = {
+        BinFrom: values.bin_from.trim().toUpperCase(),
+        BinTo: values.bin_to.trim().toUpperCase(),
+        ItemCode: (itemStatus?.itemCode || values.item_code).trim().toUpperCase(),
+        Quantity: values.quantity
+      };
+
+      const res = await client.post('/docs/traslado', payload);
+      if (res.status === 'ok') {
+        message.success(`Traslado completado con éxito: ${values.quantity} u. de ${payload.ItemCode} desde ${payload.BinFrom} hacia ${payload.BinTo}`);
+        formik.resetForm();
+        setBinFromStatus(null);
+        setBinToStatus(null);
+        setItemStatus(null);
+        setTimeout(() => {
+          binFromRef.current?.focus();
+        }, 150);
+      } else {
+        message.error(res.message || 'Error realizando traslado de stock en SAP');
+      }
+    } catch (err) {
+      message.error(err.message || 'Error en la petición de traslado');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const formik = useFormik({
     initialValues: {
       bin_from: '',
@@ -57,10 +101,14 @@ export const TransferForm = () => {
       quantity: 1
     },
     validationSchema: TransferSchema,
-    onSubmit: async (values, { resetForm }) => {
-      // Verificación estricta previa al envío
+    onSubmit: async (values) => {
+      // Verificación estricta previa al modal
       if (binFromStatus && !binFromStatus.valid) {
         message.error(binFromStatus.msg || 'La ubicación de origen no es válida.');
+        return;
+      }
+      if (binFromStatus?.hasStock === false) {
+        message.error('No hay stock suficiente en la ubicación de origen.');
         return;
       }
       if (binToStatus && !binToStatus.valid) {
@@ -72,36 +120,52 @@ export const TransferForm = () => {
         return;
       }
 
-      setLoading(true);
-      try {
-        const payload = {
-          BinFrom: values.bin_from.trim().toUpperCase(),
-          BinTo: values.bin_to.trim().toUpperCase(),
-          ItemCode: (itemStatus?.itemCode || values.item_code).trim().toUpperCase(),
-          Quantity: values.quantity
-        };
+      // Modal de confirmación antes de impactar en SAP
+      const finalItem = itemStatus?.itemCode || values.item_code.toUpperCase();
+      const finalItemName = itemStatus?.itemName || '';
+      const finalBinFrom = values.bin_from.toUpperCase();
+      const finalBinTo = values.bin_to.toUpperCase();
+      const finalQty = values.quantity;
 
-        const res = await client.post('/docs/traslado', payload);
-        if (res.status === 'ok') {
-          message.success(`Traslado completado: ${values.quantity} u. de ${payload.ItemCode} desde ${payload.BinFrom} hacia ${payload.BinTo}`);
-          resetForm();
-          setBinFromStatus(null);
-          setBinToStatus(null);
-          setItemStatus(null);
-        } else {
-          message.error(res.message || 'Error realizando traslado de stock en SAP');
-        }
-      } catch (err) {
-        message.error(err.message || 'Error en la petición de traslado');
-      } finally {
-        setLoading(false);
-      }
+      Modal.confirm({
+        title: (
+          <Space>
+            <SwapOutlined style={{ color: '#0d6efd', fontSize: 18 }} />
+            <span style={{ fontWeight: 800 }}>¿Confirmar Traslado de Stock en SAP?</span>
+          </Space>
+        ),
+        icon: null,
+        width: 480,
+        content: (
+          <div style={{ marginTop: 12, fontSize: '0.88rem', color: '#1e293b' }}>
+            <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '12px 14px' }}>
+              <div style={{ marginBottom: 6 }}>
+                <strong>📦 Artículo:</strong> {finalItem} {finalItemName ? `(${finalItemName})` : ''}
+              </div>
+              <div style={{ marginBottom: 6 }}>
+                <strong>📍 Origen:</strong> <Tag color="blue">{finalBinFrom}</Tag> {binFromStatus?.whs ? `(Alm. #${binFromStatus.whs})` : ''}
+              </div>
+              <div style={{ marginBottom: 6 }}>
+                <strong>🎯 Destino:</strong> <Tag color="green">{finalBinTo}</Tag> {binToStatus?.whs ? `(Alm. #${binToStatus.whs})` : ''}
+              </div>
+              <div>
+                <strong>🔢 Cantidad a Mover:</strong> <Tag color="geekblue" style={{ fontWeight: 700 }}>{finalQty} u.</Tag>
+              </div>
+            </div>
+          </div>
+        ),
+        okText: 'Sí, ejecutar traslado',
+        cancelText: 'Cancelar',
+        okButtonProps: { style: { backgroundColor: '#0d6efd', fontWeight: 700, borderRadius: 6 } },
+        cancelButtonProps: { style: { borderRadius: 6 } },
+        onOk: () => executeTransfer(values)
+      });
     }
   });
 
   // 1. Validar Ubicación de Origen
-  const validateBinFrom = async (binCode, itemCode, qty) => {
-    const cleanBin = (binCode || '').trim().toUpperCase();
+  const validateBinFrom = async (binCode, itemCode, qty, jumpNext = false) => {
+    const cleanBin = (binCode || '').trim().toUpperCase().replace(/\//g, '-');
     if (!cleanBin) {
       setBinFromStatus(null);
       return;
@@ -109,7 +173,7 @@ export const TransferForm = () => {
 
     setValidatingBinFrom(true);
     try {
-      const cleanItem = (itemCode || '').trim().toUpperCase();
+      const cleanItem = (itemCode || '').trim().toUpperCase().replace(/\//g, '-');
       const checkRes = await client.get(`/ubicacion-existe/${encodeURIComponent(cleanBin)}`, {
         params: {
           itemcode: cleanItem || undefined,
@@ -145,6 +209,12 @@ export const TransferForm = () => {
           stock: stockDisp,
           msg: msg
         });
+
+        if (jumpNext) {
+          setTimeout(() => {
+            binToRef.current?.focus();
+          }, 50);
+        }
       } else {
         setBinFromStatus({
           valid: false,
@@ -168,8 +238,8 @@ export const TransferForm = () => {
   };
 
   // 2. Validar Ubicación de Destino
-  const validateBinTo = async (binCode) => {
-    const cleanBin = (binCode || '').trim().toUpperCase();
+  const validateBinTo = async (binCode, jumpNext = false) => {
+    const cleanBin = (binCode || '').trim().toUpperCase().replace(/\//g, '-');
     if (!cleanBin) {
       setBinToStatus(null);
       return;
@@ -185,6 +255,12 @@ export const TransferForm = () => {
           whs: whs,
           msg: `Alm. #${whs} (Válida)`
         });
+
+        if (jumpNext) {
+          setTimeout(() => {
+            itemCodeRef.current?.focus();
+          }, 50);
+        }
       } else {
         setBinToStatus({
           valid: false,
@@ -204,8 +280,8 @@ export const TransferForm = () => {
   };
 
   // 3. Validar Artículo / Código de Barras
-  const validateItemCode = async (searchVal) => {
-    const cleanSearch = (searchVal || '').trim().toUpperCase();
+  const validateItemCode = async (searchVal, jumpNext = false) => {
+    const cleanSearch = (searchVal || '').trim().toUpperCase().replace(/\//g, '-');
     if (!cleanSearch) {
       setItemStatus(null);
       return;
@@ -230,6 +306,12 @@ export const TransferForm = () => {
         // Si ya hay ubicación de origen introducida, revalidar stock para este artículo
         if (formik.values.bin_from) {
           validateBinFrom(formik.values.bin_from, realCode, formik.values.quantity);
+        }
+
+        if (jumpNext) {
+          setTimeout(() => {
+            quantityRef.current?.focus();
+          }, 50);
         }
       } else {
         setItemStatus({
@@ -328,6 +410,7 @@ export const TransferForm = () => {
               1. Ubicación Origen:
             </label>
             <Input
+              ref={binFromRef}
               name="bin_from"
               prefix={<EnvironmentOutlined style={{ color: isBinFromOk ? '#16a34a' : binFromStatus ? '#dc2626' : '#9ca3af' }} />}
               suffix={
@@ -343,11 +426,20 @@ export const TransferForm = () => {
               size="large"
               value={formik.values.bin_from}
               onChange={(e) => {
-                const val = e.target.value.toUpperCase();
+                const val = e.target.value.toUpperCase().replace(/\//g, '-');
                 formik.setFieldValue('bin_from', val);
               }}
-              onBlur={() => validateBinFrom(formik.values.bin_from, itemStatus?.itemCode || formik.values.item_code, formik.values.quantity)}
-              onPressEnter={() => validateBinFrom(formik.values.bin_from, itemStatus?.itemCode || formik.values.item_code, formik.values.quantity)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === 'Tab') {
+                  e.preventDefault();
+                  validateBinFrom(formik.values.bin_from, itemStatus?.itemCode || formik.values.item_code, formik.values.quantity, true);
+                }
+              }}
+              onBlur={() => validateBinFrom(formik.values.bin_from, itemStatus?.itemCode || formik.values.item_code, formik.values.quantity, false)}
+              onPressEnter={(e) => {
+                e.preventDefault();
+                validateBinFrom(formik.values.bin_from, itemStatus?.itemCode || formik.values.item_code, formik.values.quantity, true);
+              }}
               style={{
                 borderRadius: 8,
                 borderColor: isBinFromOk ? '#16a34a' : binFromStatus ? '#dc2626' : '#d9d9d9',
@@ -371,6 +463,7 @@ export const TransferForm = () => {
               2. Ubicación Destino:
             </label>
             <Input
+              ref={binToRef}
               name="bin_to"
               prefix={<EnvironmentOutlined style={{ color: binToStatus?.valid ? '#16a34a' : binToStatus?.valid === false ? '#dc2626' : '#9ca3af' }} />}
               suffix={
@@ -386,11 +479,20 @@ export const TransferForm = () => {
               size="large"
               value={formik.values.bin_to}
               onChange={(e) => {
-                const val = e.target.value.toUpperCase();
+                const val = e.target.value.toUpperCase().replace(/\//g, '-');
                 formik.setFieldValue('bin_to', val);
               }}
-              onBlur={() => validateBinTo(formik.values.bin_to)}
-              onPressEnter={() => validateBinTo(formik.values.bin_to)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === 'Tab') {
+                  e.preventDefault();
+                  validateBinTo(formik.values.bin_to, true);
+                }
+              }}
+              onBlur={() => validateBinTo(formik.values.bin_to, false)}
+              onPressEnter={(e) => {
+                e.preventDefault();
+                validateBinTo(formik.values.bin_to, true);
+              }}
               style={{
                 borderRadius: 8,
                 borderColor: binToStatus?.valid ? '#16a34a' : binToStatus?.valid === false ? '#dc2626' : '#d9d9d9',
@@ -414,6 +516,7 @@ export const TransferForm = () => {
               3. Artículo / EAN:
             </label>
             <Input
+              ref={itemCodeRef}
               name="item_code"
               prefix={<BarcodeOutlined style={{ color: itemStatus?.valid ? '#16a34a' : itemStatus?.valid === false ? '#dc2626' : '#9ca3af' }} />}
               suffix={
@@ -429,11 +532,20 @@ export const TransferForm = () => {
               size="large"
               value={formik.values.item_code}
               onChange={(e) => {
-                const val = e.target.value.toUpperCase();
+                const val = e.target.value.toUpperCase().replace(/\//g, '-');
                 formik.setFieldValue('item_code', val);
               }}
-              onBlur={() => validateItemCode(formik.values.item_code)}
-              onPressEnter={() => validateItemCode(formik.values.item_code)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === 'Tab') {
+                  e.preventDefault();
+                  validateItemCode(formik.values.item_code, true);
+                }
+              }}
+              onBlur={() => validateItemCode(formik.values.item_code, false)}
+              onPressEnter={(e) => {
+                e.preventDefault();
+                validateItemCode(formik.values.item_code, true);
+              }}
               style={{
                 borderRadius: 8,
                 borderColor: itemStatus?.valid ? '#16a34a' : itemStatus?.valid === false ? '#dc2626' : '#d9d9d9',
@@ -457,6 +569,7 @@ export const TransferForm = () => {
               4. Cantidad:
             </label>
             <InputNumber
+              ref={quantityRef}
               min={1}
               style={{ width: '100%', borderRadius: 8 }}
               size="large"
@@ -466,7 +579,13 @@ export const TransferForm = () => {
               onChange={(val) => {
                 formik.setFieldValue('quantity', val);
                 if (formik.values.bin_from && (itemStatus?.itemCode || formik.values.item_code)) {
-                  validateBinFrom(formik.values.bin_from, itemStatus?.itemCode || formik.values.item_code, val);
+                  validateBinFrom(formik.values.bin_from, itemStatus?.itemCode || formik.values.item_code, val, false);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  formik.handleSubmit();
                 }
               }}
               onBlur={() => formik.setFieldTouched('quantity', true)}

@@ -182,7 +182,7 @@ class StockService:
         }
 
     @staticmethod
-    def ubicacion_existe(ubicacion, itemcode=None, min_qty=0):
+    def ubicacion_existe(ubicacion, itemcode=None, min_qty=0, whscode=None):
         if not ubicacion:
             return {
                 "existe": False,
@@ -191,7 +191,11 @@ class StockService:
                 "message": "La ubicación no puede estar vacía"
             }
         
-        info = SapRepository.get_data(resource="BinLocations", selection=["BinCode"], filter={"BinCode": ubicacion})
+        info = SapRepository.get_data(
+            resource="BinLocations",
+            selection=["BinCode", "Warehouse", "AbsEntry"],
+            filter={"BinCode": str(ubicacion).strip()}
+        )
         datos = info.get('data', []) if info and info.get('status') == 'ok' else []
         existe = bool(datos)
 
@@ -200,17 +204,29 @@ class StockService:
                 "existe": False,
                 "stock_suficiente": False,
                 "stock_disponible": 0,
-                "message": f"La ubicación {ubicacion} no existe"
+                "message": f"La ubicación '{ubicacion}' no existe en SAP"
             }
+
+        bin_whs = str(datos[0].get('Warehouse') or '').strip()
+        if whscode and bin_whs:
+            expected_whs = str(whscode).strip()
+            if bin_whs.upper() != expected_whs.upper():
+                return {
+                    "existe": False,
+                    "stock_suficiente": False,
+                    "stock_disponible": 0,
+                    "bin_whscode": bin_whs,
+                    "message": f"La ubicación '{ubicacion}' pertenece al almacén #{bin_whs}, no al almacén #{expected_whs}"
+                }
 
         stock_disponible = None
         stock_suficiente = True
-        mensaje = "Ubicación válida"
+        mensaje = f"Ubicación válida en almacén #{bin_whs}" if bin_whs else "Ubicación válida"
 
         if itemcode:
             info_stock = SapRepository.get_data_from_view(
                 view_name="NC_STOCK_UBICACION_B1SLQuery",
-                filter={"BinCode": ubicacion, "ItemCode": itemcode},
+                filter={"BinCode": str(ubicacion).strip(), "ItemCode": str(itemcode).strip()},
                 all_results=True
             )
             datos_stock = info_stock.get('data', []) if info_stock and info_stock.get('status') == 'ok' else []
@@ -230,21 +246,89 @@ class StockService:
             "existe": True,
             "stock_suficiente": stock_suficiente,
             "stock_disponible": stock_disponible,
+            "bin_whscode": bin_whs,
             "message": mensaje
         }
 
     @staticmethod
     def producto_existe(producto, producto_esperado=None):
         if not producto:
-            return {"existe": False, "productos": []}
+            return {"existe": False, "matched": False, "productos": []}
         
-        sl_filter = {"multipleExact": {"ItemCode": producto, "BarCode": producto, "U_Tipoproducto": producto}}
+        prod_clean = str(producto).strip()
+        
         if producto_esperado:
-            sl_filter['ItemCode'] = producto_esperado
+            exp_clean = str(producto_esperado).strip()
+            # 1. Comprobación directa por ItemCode
+            if prod_clean.upper() == exp_clean.upper():
+                return {
+                    "existe": True,
+                    "matched": True,
+                    "real_itemcode": exp_clean,
+                    "productos": [{"ItemCode": exp_clean}]
+                }
+            
+            # 2. Consultar el artículo esperado en SAP para verificar BarCode y U_Tipoproducto
+            item_info = SapRepository.get_data(
+                resource="Items",
+                id=exp_clean,
+                selection=["ItemCode", "ItemName", "BarCode", "U_Tipoproducto"]
+            )
+            if item_info.get('status') == 'ok' and item_info.get('data'):
+                item_data = item_info['data'][0] if isinstance(item_info['data'], list) else item_info['data']
+                bar_code = str(item_data.get('BarCode') or '').strip().upper()
+                tipo_prod = str(item_data.get('U_Tipoproducto') or '').strip().upper()
+                item_code_val = str(item_data.get('ItemCode') or '').strip().upper()
 
-        info = SapRepository.get_data(resource="Items", selection=["ItemCode", "ItemName"], filter=sl_filter)
+                if prod_clean.upper() in (item_code_val, bar_code, tipo_prod):
+                    return {
+                        "existe": True,
+                        "matched": True,
+                        "real_itemcode": item_data.get('ItemCode'),
+                        "itemname": item_data.get('ItemName'),
+                        "productos": [item_data]
+                    }
+                else:
+                    return {
+                        "existe": False,
+                        "matched": False,
+                        "message": f"El código '{prod_clean}' no coincide con el artículo esperado '{exp_clean}'",
+                        "productos": []
+                    }
+
+        # 3. Búsqueda general por cualquiera de los 3 campos (ItemCode, BarCode, U_Tipoproducto)
+        sl_filter = {"multipleExact": {"ItemCode": prod_clean, "BarCode": prod_clean, "U_Tipoproducto": prod_clean}}
+        info = SapRepository.get_data(
+            resource="Items",
+            selection=["ItemCode", "ItemName", "BarCode", "U_Tipoproducto"],
+            filter=sl_filter
+        )
         datos = info.get('data', []) if info and info.get('status') == 'ok' else []
-        return {"existe": bool(datos), "productos": datos}
+        real_code = datos[0].get('ItemCode') if datos else None
+        
+        return {
+            "existe": bool(datos),
+            "matched": bool(datos),
+            "real_itemcode": real_code,
+            "itemname": datos[0].get('ItemName') if datos else None,
+            "productos": datos
+        }
+
+    @staticmethod
+    def almacen_existe(whscode):
+        if not whscode:
+            return {"existe": False, "message": "Código de almacén vacío"}
+        res = SapRepository.get_data(
+            resource="Warehouses",
+            filter={"WarehouseCode": str(whscode).strip()},
+            selection=["WarehouseCode", "WarehouseName"]
+        )
+        datos = res.get('data', []) if res and res.get('status') == 'ok' else []
+        return {
+            "existe": bool(datos),
+            "whscode": datos[0].get('WarehouseCode') if datos else None,
+            "whsname": datos[0].get('WarehouseName') if datos else None
+        }
 
     @staticmethod
     def serie_existe(producto, serie, ubicacion=None):

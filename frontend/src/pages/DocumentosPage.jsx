@@ -1,8 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Typography, Pagination, Row, Col, Input, Select, AutoComplete, Button, message } from 'antd';
-import { SearchOutlined, ClearOutlined } from '@ant-design/icons';
-import { useFormik } from 'formik';
-import * as Yup from 'yup';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Typography, Pagination, Row, Col, Input, Select, AutoComplete, Button, message, Badge } from 'antd';
+import { ClearOutlined } from '@ant-design/icons';
 import { useLocation } from 'react-router-dom';
 import client from '../utils/client';
 import { useSocket } from '../context/SocketContext';
@@ -10,7 +8,7 @@ import { DocumentList } from '../components/docs/DocumentList';
 import { DocumentDetailModal } from '../components/docs/DocumentDetailModal';
 import { SemiPrepareModal } from '../components/docs/SemiPrepareModal';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 const TIPOS_VENTA_OPTIONS = [
   { label: 'Todos los tipos...', value: '' },
@@ -28,76 +26,174 @@ const ESTADO_PREPARACION_OPTIONS = [
   { label: '⚪ Sin Iniciar', value: 'sin_iniciar' }
 ];
 
-const DocFilterSchema = Yup.object().shape({
-  cliente: Yup.string().trim(),
-  search_docnum: Yup.string().trim(),
-  tipo_venta: Yup.string().trim(),
-  estado_preparacion: Yup.string().trim()
-});
-
 export const DocumentosPage = () => {
   const { socket } = useSocket();
   const location = useLocation();
   const initialObjType = location.state?.objType || '17';
   const [objType, setObjType] = useState(initialObjType);
-  const [documents, setDocuments] = useState([]);
+
+  // Datos en memoria cargados de SAP
+  const [rawDocuments, setRawDocuments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
+  const pageSize = 24;
 
-  // Estados de Autocompletado / Sugerencias en vivo
-  const [customerOptions, setCustomerOptions] = useState([]);
-  const [docnumOptions, setDocnumOptions] = useState([]);
+  // Estados de filtros instantáneos en memoria
+  const [filters, setFilters] = useState({
+    cliente: '',
+    search_docnum: '',
+    tipo_venta: '',
+    estado_preparacion: ''
+  });
 
   const [selectedDetailDoc, setSelectedDetailDoc] = useState(null);
   const [selectedSemiPrepareDoc, setSelectedSemiPrepareDoc] = useState(null);
 
-  const filterFormik = useFormik({
-    initialValues: {
+  // Carga inicial y sincronización al cambiar ubicación o tipo de documento
+  useEffect(() => {
+    const nextObjType = location.state?.objType || '17';
+    setObjType(nextObjType);
+    // Limpiar todos los filtros al cambiar de sección o menú
+    setFilters({
       cliente: '',
       search_docnum: '',
       tipo_venta: '',
       estado_preparacion: ''
-    },
-    validationSchema: DocFilterSchema,
-    onSubmit: (values) => {
-      fetchDocuments(objType, 1, values);
+    });
+    setPage(1);
+    fetchDocuments(nextObjType);
+  }, [location.state?.objType, location.state?.verInactivos, location.key]);
+
+  // Petición principal a SAP
+  const fetchDocuments = async (targetObjType) => {
+    const currentObjType = targetObjType || objType || '17';
+    setLoading(true);
+    try {
+      const isVerInactivos = Boolean(location.state?.verInactivos);
+      const params = {
+        page: 1,
+        per_page: 200,
+        ver_inactivos: isVerInactivos ? 'true' : 'false'
+      };
+
+      const res = await client.get(`/docs/${currentObjType}`, { params });
+
+      if (res.status === 'ok') {
+        const fetched = res.pedidos || [];
+        setRawDocuments(fetched);
+      } else {
+        message.error(res.message || 'Error cargando documentos');
+      }
+    } catch (err) {
+      console.error('Error consultando pedidos en SAP:', err);
+      message.error(err.message || 'Error consultando pedidos en SAP SQL Server');
+    } finally {
+      setLoading(false);
     }
-  });
+  };
 
-  const handleSearchCustomer = async (searchText = '') => {
-    const term = (searchText || '').trim().toLowerCase();
+  // Suscripción a WebSockets en tiempo real
+  useEffect(() => {
+    if (!socket) return;
 
-    // Sugerencias de clientes desde los documentos cargados actualmente
-    const localMatches = Array.from(
-      new Set(
-        documents
-          .map((d) => d.CARDNAME)
-          .filter(Boolean)
-      )
-    )
+    const handleSapUpdate = (data) => {
+      // Si el usuario tiene un modal abierto trabajando, no interrumpir
+      if (selectedDetailDoc || selectedSemiPrepareDoc) {
+        return;
+      }
+      if (data?.type === 'sap_new_order') {
+        message.info('🔄 Actualización detectada en SAP: Sincronizando pedidos...');
+      }
+      fetchDocuments(objType);
+    };
+
+    socket.on('sap_update', handleSapUpdate);
+    return () => {
+      socket.off('sap_update', handleSapUpdate);
+    };
+  }, [socket, objType, selectedDetailDoc, selectedSemiPrepareDoc]);
+
+  // Manejo de cambios en los filtros (Instantáneo en memoria)
+  const handleFilterChange = (field, value) => {
+    setFilters((prev) => ({
+      ...prev,
+      [field]: value
+    }));
+    setPage(1); // Volver a la primera página al cambiar cualquier filtro
+  };
+
+  const handleResetFilters = () => {
+    setFilters({
+      cliente: '',
+      search_docnum: '',
+      tipo_venta: '',
+      estado_preparacion: ''
+    });
+    setPage(1);
+  };
+
+  // --------------------------------------------------------------------------
+  // FILTRADO INSTANTÁNEO EN MEMORIA (0 ms de latencia)
+  // --------------------------------------------------------------------------
+  const filteredDocuments = useMemo(() => {
+    const clientTerm = (filters.cliente || '').trim().toLowerCase();
+    const docnumTerm = (filters.search_docnum || '').replace('#', '').trim().toLowerCase();
+    const tipoTerm = (filters.tipo_venta || '').trim().toLowerCase();
+    const estadoPrepTerm = filters.estado_preparacion || '';
+
+    if (!clientTerm && !docnumTerm && !tipoTerm && !estadoPrepTerm) {
+      return rawDocuments;
+    }
+
+    return rawDocuments.filter((doc) => {
+      const docNumStr = String(doc.DOCNUM ?? doc.DOCENTRY ?? doc.DocNum ?? doc.DocEntry ?? '').toLowerCase();
+      const cardNameStr = String(doc.CARDNAME ?? doc.CardName ?? '').toLowerCase();
+      const cardCodeStr = String(doc.CARDCODE ?? doc.CardCode ?? '').toLowerCase();
+      const tipoStr = String(doc.TIPOVENTA ?? doc.TipoVenta ?? '').toLowerCase();
+      const totalLineas = doc.LINEAS?.length || (doc.DocumentLines?.length || 0);
+      const gestionadas = Number(doc.CUENTA_PREPARADO) || 0;
+      const isPurchase = String(doc.OBJTYPE || doc.ObjType) === '22';
+      const isTransfer = String(doc.OBJTYPE || doc.ObjType) === '1250000001' || String(doc.OBJTYPE || doc.ObjType) === '67';
+      const isSemiPropio = !isPurchase && !isTransfer && (
+        Boolean(doc.IS_SEMI_PREPARADO) ||
+        (doc.SGA_PREPARADAS && doc.SGA_PREPARADAS.length > 0) ||
+        (gestionadas > 0 && gestionadas < totalLineas)
+      );
+
+      const matchDocnum = !docnumTerm || docNumStr.includes(docnumTerm);
+      const matchClient = !clientTerm || cardNameStr.includes(clientTerm) || cardCodeStr.includes(clientTerm);
+      const matchTipo = !tipoTerm || tipoStr.includes(tipoTerm);
+      const matchEstado = !estadoPrepTerm ||
+        (estadoPrepTerm === 'en_preparacion' && (isSemiPropio || doc.IS_SEMI_PREPARADO || gestionadas > 0)) ||
+        (estadoPrepTerm === 'sin_iniciar' && !isSemiPropio && !doc.IS_SEMI_PREPARADO && gestionadas === 0);
+
+      return matchDocnum && matchClient && matchTipo && matchEstado;
+    });
+  }, [rawDocuments, filters]);
+
+  // Paginación instantánea en cliente
+  const paginatedDocuments = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredDocuments.slice(start, start + pageSize);
+  }, [filteredDocuments, page, pageSize]);
+
+  // --------------------------------------------------------------------------
+  // OPCIONES DE AUTOCOMPLETADO INSTANTÁNEAS (Desde la caché en memoria)
+  // --------------------------------------------------------------------------
+  const customerOptions = useMemo(() => {
+    const term = (filters.cliente || '').trim().toLowerCase();
+    const uniqueNames = Array.from(
+      new Set(rawDocuments.map((d) => d.CARDNAME).filter(Boolean))
+    );
+    return uniqueNames
       .filter((name) => !term || name.toLowerCase().includes(term))
       .slice(0, 15)
       .map((name) => ({ value: name, label: name }));
+  }, [rawDocuments, filters.cliente]);
 
-    try {
-      const res = await client.get('/search/customers', { params: { term } });
-      if (res.status === 'ok' && Array.isArray(res.results) && res.results.length > 0) {
-        setCustomerOptions(res.results);
-        return;
-      }
-    } catch (e) {
-      console.error('Error buscando clientes:', e);
-    }
-
-    setCustomerOptions(localMatches);
-  };
-
-  const handleSearchDocnum = async (searchText = '') => {
-    const term = (searchText || '').replace('#', '').trim().toLowerCase();
-
-    // Sugerencias ÚNICAMENTE de los documentos SGA activos cargados actualmente
-    const localMatches = documents
+  const docnumOptions = useMemo(() => {
+    const term = (filters.search_docnum || '').replace('#', '').trim().toLowerCase();
+    return rawDocuments
       .filter((d) => {
         const numStr = String(d.DOCNUM || d.DOCENTRY || '').toLowerCase();
         return !term || numStr.includes(term);
@@ -110,122 +206,7 @@ export const DocumentosPage = () => {
           label: `#${num} - ${d.CARDNAME || 'Cliente'}`
         };
       });
-
-    try {
-      const isInactive = location.state?.verInactivos ? 'true' : 'false';
-      const res = await client.get('/search/docnums', {
-        params: { term, objtype: objType, ver_inactivos: isInactive }
-      });
-      if (res.status === 'ok' && Array.isArray(res.results) && res.results.length > 0) {
-        setDocnumOptions(res.results);
-        return;
-      }
-    } catch (e) {
-      console.error('Error buscando números de documento SGA:', e);
-    }
-
-    setDocnumOptions(localMatches);
-  };
-
-  useEffect(() => {
-    // Solo lanzar sugerencias si el usuario ya tiene un término activo en el buscador.
-    // Evita peticiones API vacías en cada recarga de la lista de documentos.
-    if (filterFormik.values.cliente) handleSearchCustomer(filterFormik.values.cliente);
-    if (filterFormik.values.search_docnum) handleSearchDocnum(filterFormik.values.search_docnum);
-  }, [objType, documents]);
-
-  useEffect(() => {
-    if (location.state?.objType) {
-      setObjType(location.state.objType);
-    }
-  }, [location.state]);
-
-  useEffect(() => {
-    fetchDocuments(objType, 1, filterFormik.values);
-  }, [objType]);
-
-  // Suscripción a WebSockets en tiempo real
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleSapUpdate = (data) => {
-      // Si el usuario tiene un modal abierto trabajando, no recargar el fondo para evitar parpadeos
-      if (selectedDetailDoc || selectedSemiPrepareDoc) {
-        return;
-      }
-      if (data?.type === 'sap_new_order') {
-        message.info('🔄 Actualización detectada en SAP: Recargando lista de pedidos...');
-      }
-      fetchDocuments(objType, page, filterFormik.values);
-    };
-
-    socket.on('sap_update', handleSapUpdate);
-    return () => {
-      socket.off('sap_update', handleSapUpdate);
-    };
-  }, [socket, objType, page, filterFormik.values, selectedDetailDoc, selectedSemiPrepareDoc]);
-
-  const fetchDocuments = async (targetObjType, targetPage = 1, currentFilters = filterFormik.values) => {
-    setLoading(true);
-    try {
-      const params = {
-        page: targetPage,
-        per_page: 50,
-        cliente: currentFilters.cliente,
-        docnum: currentFilters.search_docnum,
-        tipo_venta: currentFilters.tipo_venta,
-        ver_inactivos: location.state?.verInactivos ? 'true' : 'false'
-      };
-
-      const res = await client.get(`/docs/${targetObjType}`, { params });
-
-      if (res.status === 'ok') {
-        let fetchedDocs = res.pedidos || [];
-
-        // El backend ya calcula IS_SEMI_PREPARADO, IS_COMPLETAMENTE_PREPARADO y CUENTA_PREPARADO
-        // dentro del endpoint /api/docs/<objtype>, por lo que no se necesita un batch adicional.
-
-        const clientTerm = (currentFilters.cliente || '').trim().toLowerCase();
-        const docnumTerm = (currentFilters.search_docnum || '').replace('#', '').trim().toLowerCase();
-        const tipoTerm = (currentFilters.tipo_venta || '').trim().toLowerCase();
-        const estadoPrepTerm = currentFilters.estado_preparacion || '';
-
-        if (clientTerm || docnumTerm || tipoTerm || estadoPrepTerm) {
-          fetchedDocs = fetchedDocs.filter((doc) => {
-            const docNumStr = String(doc.DOCNUM ?? doc.DOCENTRY ?? doc.DocNum ?? doc.DocEntry ?? '').toLowerCase();
-            const cardNameStr = String(doc.CARDNAME ?? doc.CardName ?? '').toLowerCase();
-            const cardCodeStr = String(doc.CARDCODE ?? doc.CardCode ?? '').toLowerCase();
-            const tipoStr = String(doc.TIPOVENTA ?? doc.TipoVenta ?? '').toLowerCase();
-            const gestionadas = doc.CUENTA_PREPARADO || 0;
-
-            const matchDocnum = !docnumTerm || docNumStr.includes(docnumTerm);
-            const matchClient = !clientTerm || cardNameStr.includes(clientTerm) || cardCodeStr.includes(clientTerm);
-            const matchTipo = !tipoTerm || tipoStr.includes(tipoTerm);
-            const matchEstado = !estadoPrepTerm ||
-              (estadoPrepTerm === 'en_preparacion' && (gestionadas > 0 || doc.IS_SEMI_PREPARADO)) ||
-              (estadoPrepTerm === 'sin_iniciar' && gestionadas === 0 && !doc.IS_SEMI_PREPARADO);
-
-            return matchDocnum && matchClient && matchTipo && matchEstado;
-          });
-        }
-
-        setDocuments(fetchedDocs);
-        setTotalCount(res.total_count || fetchedDocs.length);
-        setPage(targetPage);
-      } else {
-        message.error(res.message || 'Error cargando documentos');
-      }
-    } catch (err) {
-      message.error(err.message || 'Error consultando pedidos en SAP SQL Server');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleResetFilters = () => {
-    filterFormik.resetForm({ values: { cliente: '', search_docnum: '', tipo_venta: '', estado_preparacion: '' } });
-    fetchDocuments(objType, 1, { cliente: '', search_docnum: '', tipo_venta: '', estado_preparacion: '' });
-  };
+  }, [rawDocuments, filters.search_docnum]);
 
   const getTitle = () => {
     if (location.state?.verInactivos) return 'Pedidos Inactivos';
@@ -239,14 +220,16 @@ export const DocumentosPage = () => {
 
   const handleDeactivateDocument = async (doc) => {
     try {
-      const isInactiveView = location.state?.verInactivos;
+      const isInactiveView = Boolean(location.state?.verInactivos);
       const endpoint = isInactiveView ? '/activar-pedido' : '/desactivar-pedido';
       const actionText = isInactiveView ? 'activado' : 'desactivado';
+      const docId = doc.DOCENTRY || doc.DOCNUM;
 
-      const res = await client.post(endpoint, { docentry: doc.DOCENTRY || doc.DOCNUM });
+      const res = await client.post(endpoint, { docentry: docId });
       if (res.status === 'ok') {
         message.success(res.message || `Pedido #${doc.DOCNUM || doc.DOCENTRY} ${actionText} correctamente`);
-        fetchDocuments(objType, page, filterFormik.values);
+        setRawDocuments((prev) => prev.filter((d) => (d.DOCENTRY || d.DOCNUM) !== docId));
+        fetchDocuments(objType);
       } else {
         message.error(res.message || `Error al ${actionText} pedido`);
       }
@@ -255,139 +238,126 @@ export const DocumentosPage = () => {
     }
   };
 
+  const hasActiveFilters = Boolean(
+    filters.cliente || filters.search_docnum || filters.tipo_venta || filters.estado_preparacion
+  );
+
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto', padding: '16px 12px' }}>
-      <Title level={2} style={{ marginBottom: 16, fontWeight: 700, color: '#212529', fontSize: '1.5rem' }}>
-        {getTitle()}
-      </Title>
-
-      <div className="sga-filter-panel">
-        <form onSubmit={filterFormik.handleSubmit}>
-          <Row gutter={[12, 12]} align="top">
-            {/* Cliente Descripcion con Sugerencias Estilo Google */}
-            <Col xs={24} sm={12} md={5}>
-              <label className="sga-filter-label">
-                Cliente Descripción
-              </label>
-              <AutoComplete
-                options={customerOptions}
-                value={filterFormik.values.cliente}
-                onChange={(val) => {
-                  filterFormik.setFieldValue('cliente', val || '');
-                  handleSearchCustomer(val || '');
-                }}
-                onSelect={(val) => {
-                  filterFormik.setFieldValue('cliente', val || '');
-                  fetchDocuments(objType, 1, { ...filterFormik.values, cliente: val || '' });
-                }}
-                style={{ width: '100%' }}
-                size="large"
-              >
-                <Input
-                  placeholder="Nombre o código cliente..."
-                  onPressEnter={filterFormik.handleSubmit}
-                  allowClear
-                  size="large"
-                  style={{ borderRadius: 8 }}
-                />
-              </AutoComplete>
-            </Col>
-
-            {/* Num Documento con Sugerencias Estilo Google */}
-            <Col xs={24} sm={12} md={4}>
-              <label className="sga-filter-label">
-                Num Documento
-              </label>
-              <AutoComplete
-                options={docnumOptions}
-                value={filterFormik.values.search_docnum}
-                onChange={(val) => {
-                  filterFormik.setFieldValue('search_docnum', val || '');
-                  handleSearchDocnum(val || '');
-                }}
-                onSelect={(val) => {
-                  filterFormik.setFieldValue('search_docnum', val || '');
-                  fetchDocuments(objType, 1, { ...filterFormik.values, search_docnum: val || '' });
-                }}
-                style={{ width: '100%' }}
-                size="large"
-              >
-                <Input
-                  placeholder="Número..."
-                  onPressEnter={filterFormik.handleSubmit}
-                  allowClear
-                  size="large"
-                  style={{ borderRadius: 8 }}
-                />
-              </AutoComplete>
-            </Col>
-
-            {/* Tipo Venta */}
-            <Col xs={24} sm={12} md={5}>
-              <label className="sga-filter-label">
-                Tipo Venta
-              </label>
-              <Select
-                name="tipo_venta"
-                value={filterFormik.values.tipo_venta}
-                onChange={(val) => filterFormik.setFieldValue('tipo_venta', val)}
-                size="large"
-                style={{ width: '100%', borderRadius: 8 }}
-                options={TIPOS_VENTA_OPTIONS}
-              />
-            </Col>
-
-            {/* Estado Preparación */}
-            <Col xs={24} sm={12} md={5}>
-              <label className="sga-filter-label">
-                Estado Preparación
-              </label>
-              <Select
-                name="estado_preparacion"
-                value={filterFormik.values.estado_preparacion}
-                onChange={(val) => filterFormik.setFieldValue('estado_preparacion', val)}
-                size="large"
-                style={{ width: '100%', borderRadius: 8 }}
-                options={ESTADO_PREPARACION_OPTIONS}
-              />
-            </Col>
-
-            {/* Botones de Acción */}
-            <Col xs={24} sm={24} md={5}>
-              <div className="sga-filter-label-spacer" />
-              <div style={{ display: 'flex', gap: 8 }}>
-                <Button
-                  type="primary"
-                  htmlType="submit"
-                  icon={<SearchOutlined />}
-                  loading={loading}
-                  size="large"
-                  className="sga-btn-filter-primary"
-                  style={{ flex: 1 }}
-                >
-                  Filtrar
-                </Button>
-
-                <Button
-                  icon={<ClearOutlined />}
-                  onClick={handleResetFilters}
-                  size="large"
-                  className="sga-btn-filter-secondary"
-                  style={{ flex: 1 }}
-                >
-                  Limpiar
-                </Button>
-              </div>
-            </Col>
-          </Row>
-        </form>
+      {/* Cabecera de Página con Título */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <Title level={2} style={{ margin: 0, fontWeight: 700, color: '#212529', fontSize: '1.5rem' }}>
+          {getTitle()}
+        </Title>
+        <Badge
+          count={filteredDocuments.length}
+          overflowCount={999}
+          style={{ backgroundColor: '#0d6efd', fontWeight: 700 }}
+          title={`${filteredDocuments.length} pedidos encontrados`}
+        />
       </div>
 
+      {/* Panel de Filtros Instantáneos */}
+      <div className="sga-filter-panel">
+        <Row gutter={[12, 12]} align="top">
+          {/* Cliente Descripción con Sugerencias Instantáneas */}
+          <Col xs={24} sm={12} md={5}>
+            <label className="sga-filter-label">
+              Cliente Descripción
+            </label>
+            <AutoComplete
+              options={customerOptions}
+              value={filters.cliente}
+              onChange={(val) => handleFilterChange('cliente', val || '')}
+              onSelect={(val) => handleFilterChange('cliente', val || '')}
+              style={{ width: '100%' }}
+              size="large"
+            >
+              <Input
+                placeholder="Filtrar cliente o código..."
+                allowClear
+                size="large"
+                style={{ borderRadius: 8 }}
+              />
+            </AutoComplete>
+          </Col>
+
+          {/* Num Documento con Sugerencias Instantáneas */}
+          <Col xs={24} sm={12} md={4}>
+            <label className="sga-filter-label">
+              Num Documento
+            </label>
+            <AutoComplete
+              options={docnumOptions}
+              value={filters.search_docnum}
+              onChange={(val) => handleFilterChange('search_docnum', val || '')}
+              onSelect={(val) => handleFilterChange('search_docnum', val || '')}
+              style={{ width: '100%' }}
+              size="large"
+            >
+              <Input
+                placeholder="Ej: 1024..."
+                allowClear
+                size="large"
+                style={{ borderRadius: 8 }}
+              />
+            </AutoComplete>
+          </Col>
+
+          {/* Tipo Venta */}
+          <Col xs={24} sm={12} md={5}>
+            <label className="sga-filter-label">
+              Tipo Venta
+            </label>
+            <Select
+              name="tipo_venta"
+              value={filters.tipo_venta}
+              onChange={(val) => handleFilterChange('tipo_venta', val)}
+              size="large"
+              style={{ width: '100%', borderRadius: 8 }}
+              options={TIPOS_VENTA_OPTIONS}
+            />
+          </Col>
+
+          {/* Estado Preparación */}
+          <Col xs={24} sm={12} md={5}>
+            <label className="sga-filter-label">
+              Estado Preparación
+            </label>
+            <Select
+              name="estado_preparacion"
+              value={filters.estado_preparacion}
+              onChange={(val) => handleFilterChange('estado_preparacion', val)}
+              size="large"
+              style={{ width: '100%', borderRadius: 8 }}
+              options={ESTADO_PREPARACION_OPTIONS}
+            />
+          </Col>
+
+          {/* Botón Limpiar */}
+          <Col xs={24} sm={24} md={5}>
+            <div className="sga-filter-label-spacer" />
+            <Button
+              icon={<ClearOutlined />}
+              onClick={handleResetFilters}
+              disabled={!hasActiveFilters}
+              size="large"
+              className="sga-btn-filter-secondary"
+              style={{ width: '100%' }}
+            >
+              Limpiar Filtros
+            </Button>
+          </Col>
+        </Row>
+      </div>
+
+      {/* Lista de Documentos Filtrada */}
       <DocumentList
-        documents={documents}
+        documents={paginatedDocuments}
         loading={loading}
         onOpenDetail={(doc) => setSelectedDetailDoc(doc)}
         onDeactivateDocument={handleDeactivateDocument}
+        isInactiveView={Boolean(location.state?.verInactivos)}
       />
 
       {/* ── LEYENDA DE COLORES EN EL FOOTER ── */}
@@ -402,7 +372,6 @@ export const DocumentosPage = () => {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-
           <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
             {/* Azul - Disponible */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -447,23 +416,25 @@ export const DocumentosPage = () => {
         </div>
       </div>
 
-      {totalCount > 20 && (
+      {/* Paginación Instantánea */}
+      {filteredDocuments.length > pageSize && (
         <div style={{ textAlign: 'center', marginTop: 20 }}>
           <Pagination
             current={page}
-            total={totalCount}
-            pageSize={20}
-            onChange={(p) => fetchDocuments(objType, p, filterFormik.values)}
+            total={filteredDocuments.length}
+            pageSize={pageSize}
+            onChange={(p) => setPage(p)}
             showSizeChanger={false}
           />
         </div>
       )}
 
+      {/* Modales de Detalle y Semi-preparación */}
       <DocumentDetailModal
         open={!!selectedDetailDoc}
         document={selectedDetailDoc}
         onClose={() => setSelectedDetailDoc(null)}
-        onSuccess={() => fetchDocuments(objType, page, filterFormik.values)}
+        onSuccess={() => fetchDocuments(objType, false)}
         onOpenSemiPrepare={(doc) => {
           setSelectedDetailDoc(null);
           setSelectedSemiPrepareDoc(doc);
@@ -474,8 +445,10 @@ export const DocumentosPage = () => {
         open={!!selectedSemiPrepareDoc}
         document={selectedSemiPrepareDoc}
         onClose={() => setSelectedSemiPrepareDoc(null)}
-        onSuccess={() => fetchDocuments(objType, page, filterFormik.values)}
+        onSuccess={() => fetchDocuments(objType, false)}
       />
     </div>
   );
 };
+
+export default DocumentosPage;

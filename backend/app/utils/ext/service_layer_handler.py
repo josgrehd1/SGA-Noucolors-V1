@@ -1,4 +1,5 @@
 # pyrefly: ignore [missing-import]
+from werkzeug._internal import _log
 from flask import current_app, jsonify, session
 import requests
 from requests.adapters import HTTPAdapter
@@ -143,7 +144,8 @@ class ServiceLayerHandler:
             "Content-Type": "application/json",
             "B1S-ReplaceCollectionsOnPatch": f"{str(replace_collection).lower()}",
             "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Pragma": "no-cache"
+            "Pragma": "no-cache",
+            "Prefer": "odata.maxpagesize=500"
         }
         
         kwargs = {
@@ -214,7 +216,6 @@ class ServiceLayerHandler:
     def _execute_get_data(self, url, all_results=False, is_crossjoin=False, specific_val=None, is_view=False, master_session=None):
         all_data_list = []
         current_url = url
-        url_base_adj = f"{self.url_base}/{'view.svc/' if is_view else ''}"
 
         try:
             while True:
@@ -241,7 +242,13 @@ class ServiceLayerHandler:
 
                 next_link = data.get('odata.nextLink')
                 if all_results and next_link:
-                    current_url = f"{url_base_adj}/{next_link.replace('%20', ' ')}"
+                    # El nextLink de SAP view.svc es relativo: "NC_SGA_xxx?$skip=200&..."
+                    # Necesitamos construir la URL completa usando la base de view.svc
+                    base_url = self.url_base.rstrip('/')
+                    if is_view:
+                        current_url = f"{base_url}/view.svc/{next_link}"
+                    else:
+                        current_url = f"{base_url}/{next_link}"
                 else:
                     break
 
@@ -254,6 +261,8 @@ class ServiceLayerHandler:
             return {"status": "ok", "initial_url": url, "count": count, "data": all_data_list}
 
         except Exception as e:
+            import traceback
+            _log.error(f"[OData ERROR] {url} -> {traceback.format_exc()}")
             return {"status": "error", "initial_url": url, "message": str(e)}
 
     def get_data_from_query(self, query_name, all_results=False, master_session=None, **params):
@@ -296,8 +305,16 @@ class ServiceLayerHandler:
             skip = (page - 1) * per_page
             query_params.append(f"$top={per_page}")
             query_params.append(f"$skip={skip}")
+        elif per_page:
+            query_params.append(f"$top={per_page}")
+            query_params.append("$skip=0")
+        elif not id:
+            # Sin paginación explícita: pedir 200 para no quedarse con el default de SAP (20 registros)
+            query_params.append("$top=200")
+            query_params.append("$skip=0")
         if expand:
-            query_params.append(f"$expand={','.join(expand)}")
+            expand_str = ",".join(expand) if isinstance(expand, list) else str(expand)
+            query_params.append(f"$expand={expand_str}")
 
         if inline_count and not resource.startswith('Series'):
             query_params.append("$inlinecount=allpages")
@@ -323,10 +340,18 @@ class ServiceLayerHandler:
         if orderby:
             direction = f" {order_direction}" if order_direction else ""
             query_params.append(f"$orderby={orderby}{direction}")
+
         if page and per_page:
             skip = (page - 1) * per_page
             query_params.append(f"$top={per_page}")
             query_params.append(f"$skip={skip}")
+        elif per_page:
+            query_params.append(f"$top={per_page}")
+            query_params.append("$skip=0")
+        else:
+            # Sin paginación explícita: solicitar en páginas de 200 para que SAP devuelva datos
+            query_params.append("$top=200")
+            query_params.append("$skip=0")
 
         query_params.append("$inlinecount=allpages")
 
@@ -389,21 +414,38 @@ class ServiceLayerHandler:
                 clauses.append(f"contains({field}, '{val}')")
             elif key.endswith('__in'):
                 field = key[:-4]
-                if isinstance(val, list) and val:
+                items = val if isinstance(val, list) else [val]
+                if not items:
+                    clauses.append(f"{field} eq '__NO_MATCH__'")
+                else:
                     or_items = []
-                    for x in val:
-                        v_val = x if isinstance(x, (int, float)) else f"'{x}'"
-                        or_items.append(f"{field} eq {v_val}")
+                    for x in items:
+                        if isinstance(x, (int, float)):
+                            or_items.append(f"{field} eq {x}")
+                        elif str(x).isdigit():
+                            or_items.append(f"{field} eq {x}")
+                        else:
+                            clean_x = str(x).replace("'", "''")
+                            or_items.append(f"{field} eq '{clean_x}'")
                     clauses.append(f"({' or '.join(or_items)})")
             elif key.endswith('__between'):
                 field = key[:-9]
                 if isinstance(val, list) and len(val) == 2:
                     clauses.append(f"{field} ge '{val[0]}' and {field} le '{val[1]}'")
+            elif key.endswith('__ne'):
+                field = key[:-4]
+                formatted_val = val if isinstance(val, (int, float)) else f"'{val}'"
+                clauses.append(f"{field} ne {formatted_val}")
             elif key.endswith('__greater'):
                 field = key[:-9]
                 formatted_val = val if isinstance(val, (int, float)) else f"'{val}'"
                 clauses.append(f"{field} gt {formatted_val}")
             else:
-                formatted_val = val if isinstance(val, (int, float)) else f"'{val}'"
-                clauses.append(f"{key} eq {formatted_val}")
+                if isinstance(val, (int, float)):
+                    clauses.append(f"{key} eq {val}")
+                elif str(val).isdigit() and key in ['DOCENTRY', 'DocEntry', 'DOCNUM', 'DocNum', 'LineNum', 'LINENUM']:
+                    clauses.append(f"{key} eq {val}")
+                else:
+                    clean_val = str(val).replace("'", "''")
+                    clauses.append(f"{key} eq '{clean_val}'")
         return " and ".join(clauses)

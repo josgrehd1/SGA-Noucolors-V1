@@ -50,13 +50,9 @@ export const SidebarNav = ({ visible, onClose }) => {
       ]
     },
     {
-      key: 'operaciones-group',
+      key: 'inventario',
       icon: <AppstoreOutlined />,
-      label: 'Operaciones de Stock',
-      children: [
-        { key: 'inventario', label: 'Inventario' },
-        { key: 'inv-ciego', label: 'Inv. Ciego' }
-      ]
+      label: 'Inventario'
     },
     {
       key: 'stock-group',

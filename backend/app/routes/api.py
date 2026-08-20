@@ -205,15 +205,19 @@ def finalizar_preparacion(objtype, docentry):
     return DocsService.finalizar_preparacion(objtype=objtype, docentry=docentry, parcial=parcial)
 
 @api_bp.route('/docs/change-default-bin', methods=["POST"])
+@api_bp.route('/stock/change-default-bin', methods=["POST"])
 @sap_login_required
 def change_default_bin():
     data = request.get_json() or {}
-    whscode = data.get('whscode')
+    whscode = data.get('whscode') or '01'
     itemcode = data.get('itemcode')
-    new_bin = data.get('new_bin')
+    new_bin = data.get('new_bin') or data.get('bincode')
 
-    success, msg = DocsService.change_default_bin(whscode=whscode, itemcode=itemcode, new_bin=new_bin)
-    return jsonify({'status': 'ok', 'message': msg})
+    try:
+        success, msg = DocsService.change_default_bin(whscode=whscode, itemcode=itemcode, new_bin=new_bin)
+        return jsonify({'status': 'ok', 'message': msg})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 400
 
 @api_bp.route('/docs/inventario', methods=["POST"])
 @sap_login_required
@@ -238,15 +242,22 @@ def post_traslado():
 @sap_login_required
 def existe_ubicacion(ubicacion):
     itemcode = request.args.get('itemcode', '')
+    whscode = request.args.get('whscode', '')
     qty = request.args.get('qty', request.args.get('min_qty', 0), type=float)
-    info = StockService.ubicacion_existe(ubicacion, itemcode=itemcode, min_qty=qty)
+    info = StockService.ubicacion_existe(ubicacion, itemcode=itemcode, min_qty=qty, whscode=whscode)
+    return jsonify(info)
+
+@api_bp.route('/almacen-existe/<whscode>', methods=["GET"])
+@sap_login_required
+def existe_almacen(whscode):
+    info = StockService.almacen_existe(whscode)
     return jsonify(info)
 
 @api_bp.route('/producto-existe', methods=["GET"])
 @sap_login_required
 def existe_producto():
-    prod_search = request.args.get('prod-search', '')
-    prod_expect = request.args.get('prod-expect', '')
+    prod_search = request.args.get('prod-search', '') or request.args.get('producto', '')
+    prod_expect = request.args.get('prod-expect', '') or request.args.get('itemcode', '')
     info = StockService.producto_existe(prod_search, prod_expect)
     return jsonify(info)
 
@@ -313,18 +324,24 @@ def borrar_prep_stock():
 @api_bp.route('/activar-pedido', methods=["POST"])
 @sap_login_required
 def activar_pedido():
-    data = request.get_json() or {}
-    docentry = data.get('docentry')
-    success, msg = DocsService.activar_pedido(docentry)
-    return jsonify({"status": "ok", "message": msg})
+    try:
+        data = request.get_json() or {}
+        docentry = data.get('docentry')
+        success, msg = DocsService.activar_pedido(docentry)
+        return jsonify({"status": "ok", "message": msg})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
 
 @api_bp.route('/desactivar-pedido', methods=["POST"])
 @sap_login_required
 def desactivar_pedido():
-    data = request.get_json() or {}
-    docentry = data.get('docentry')
-    success, msg = DocsService.desactivar_pedido(docentry)
-    return jsonify({"status": "ok", "message": msg})
+    try:
+        data = request.get_json() or {}
+        docentry = data.get('docentry')
+        success, msg = DocsService.desactivar_pedido(docentry)
+        return jsonify({"status": "ok", "message": msg})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
 
 # ==============================================================================
 # 4. RUTAS DE ALBARANES E IMPRESIÓN PDF (/api/albaranes)

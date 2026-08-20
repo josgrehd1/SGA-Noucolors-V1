@@ -239,6 +239,14 @@ body {
   flex-direction: column;
   justify-content: space-between;
   background-color: #ffffff;
+  cursor: default !important;
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.22s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.22s ease !important;
+}
+
+.sga-product-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04) !important;
+  border-color: #cbd5e1 !important;
 }
 
 .sga-item-code-badge {
@@ -270,14 +278,18 @@ body {
 
 /* Micro-tarjetas de Acción Rápida */
 .action-card-btn {
-  transition: all 0.15s ease;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  cursor: pointer !important;
 }
 
-.action-card-btn:hover,
-.action-card-btn:active {
+.action-card-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
-  filter: brightness(0.97);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.09) !important;
+  filter: brightness(0.98);
+}
+
+.action-card-btn:active {
+  transform: translateY(0.5px) scale(0.98);
 }
 
 .sga-action-microcard {
@@ -286,28 +298,25 @@ body {
   gap: 8px;
   padding: 6px 8px;
   border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.15s ease;
+  border: 1px solid #e2e8f0;
+  background-color: #f8fafc;
+  cursor: pointer !important;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.sga-action-microcard-ubis {
-  border: 1px solid #dbeafe;
-  background-color: #eff6ff;
+.sga-action-microcard:hover {
+  background-color: #f1f5f9;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
 }
 
-.sga-action-microcard-whs {
-  border: 1px solid #d1fae5;
-  background-color: #ecfdf5;
+.sga-action-microcard > div:first-child {
+  transition: transform 0.18s ease;
 }
 
-.sga-action-microcard-nec {
-  border: 1px solid #fef3c7;
-  background-color: #fffbeb;
-}
-
-.sga-action-microcard-mov {
-  border: 1px solid #f3e8ff;
-  background-color: #faf5ff;
+.sga-action-microcard:hover > div:first-child {
+  transform: scale(1.08);
 }
 
 /* ==========================================================================
@@ -324,34 +333,17 @@ body {
 }
 
 .sga-kpi-card {
-  border-radius: var(--sga-radius-lg);
+  border-radius: 8px;
   padding: 8px 10px;
   text-align: center;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  box-sizing: border-box;
 }
 
-.sga-kpi-card-stock {
-  background-color: #f0fdf4;
-  border: 1px solid #bbf7d0;
-}
-
-.sga-kpi-card-committed {
-  background-color: #eff6ff;
-  border: 1px solid #bfdbfe;
-}
-
-.sga-kpi-card-ordered {
-  background-color: #faf5ff;
-  border: 1px solid #e9d5ff;
-}
-
-.sga-kpi-card-atp-positive {
-  background-color: #f0f9ff;
-  border: 1px solid #bae6fd;
-}
-
-.sga-kpi-card-atp-negative {
-  background-color: #fef2f2;
-  border: 1px solid #fecaca;
+.sga-kpi-card-atp {
+  background-color: #f1f5f9;
+  border: 1.5px solid #cbd5e1;
 }
 
 .sga-segmented-pill {
@@ -658,51 +650,88 @@ body {
 }
 
 .sga-bultos-container {
-  display: flex;
+  display: inline-flex;
   flex-direction: column;
+  justify-content: flex-end;
 }
 
 .sga-bultos-label {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #6c757d;
-  margin-bottom: 2px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #64748b;
+  margin-bottom: 3px;
+  line-height: 1;
 }
 
 .sga-bultos-group {
-  display: flex;
-  align-items: center;
+  display: inline-flex;
+  align-items: stretch;
+  height: 32px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  overflow: hidden;
+  background-color: #ffffff;
+  box-sizing: border-box;
 }
 
 .sga-bultos-icon {
-  background-color: #f8f9fa;
-  border: 1px solid #d9d9d9;
-  border-right: none;
-  border-radius: 6px 0 0 6px;
-  padding: 4px 8px;
+  background-color: #f8fafc;
+  border: none;
+  border-right: 1px solid #e2e8f0;
+  padding: 0 8px;
   font-size: 13px;
-  color: #6c757d;
-  font-weight: 600;
-  height: 32px;
+  height: 100%;
   display: flex;
   align-items: center;
+  justify-content: center;
+  line-height: 1;
+  user-select: none;
+  box-sizing: border-box;
 }
 
-.sga-bultos-input {
-  width: 55px;
+.sga-bultos-input.ant-input-number {
+  width: 44px !important;
+  border: none !important;
   border-radius: 0 !important;
-  text-align: center;
-  font-weight: 700;
-  height: 32px;
+  box-shadow: none !important;
+  height: 100% !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  box-sizing: border-box !important;
+  background: #ffffff !important;
+}
+
+.sga-bultos-input .ant-input-number-input {
+  height: 100% !important;
+  text-align: center !important;
+  font-weight: 800 !important;
+  font-size: 0.88rem !important;
+  padding: 0 !important;
+}
+
+.sga-bultos-input .ant-input-number-handler-wrap {
+  display: none !important;
 }
 
 .sga-bultos-btn-print {
-  border-radius: 0 6px 6px 0 !important;
+  border-radius: 0 !important;
   background-color: #0d6efd !important;
-  border-color: #0d6efd !important;
+  border: none !important;
+  color: #ffffff !important;
   font-weight: 700 !important;
-  padding: 0 10px !important;
-  height: 32px !important;
+  font-size: 0.82rem !important;
+  padding: 0 12px !important;
+  height: 100% !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  transition: background-color 0.15s ease !important;
+  box-sizing: border-box !important;
+}
+
+.sga-bultos-btn-print:hover {
+  background-color: #0b5ed7 !important;
 }
 
 .sga-btn-modal-semi {
@@ -858,6 +887,14 @@ body {
   justify-content: space-between;
   border-radius: 14px !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+  cursor: default !important;
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.22s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.22s ease !important;
+}
+
+.sga-doc-card-container:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04) !important;
+  border-color: #cbd5e1 !important;
 }
 
 .sga-doc-card-header {
@@ -950,6 +987,20 @@ body {
   border-radius: 6px !important;
   font-size: 0.82rem !important;
   padding: 0 4px !important;
+  cursor: pointer !important;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.sga-doc-btn-gest:hover {
+  background-color: #0d6efd !important;
+  color: #ffffff !important;
+  border-color: #0d6efd !important;
+  transform: translateY(-1.5px);
+  box-shadow: 0 4px 12px rgba(13, 110, 253, 0.25) !important;
+}
+
+.sga-doc-btn-gest:active {
+  transform: translateY(0.5px) scale(0.98);
 }
 
 .sga-doc-btn-det {
@@ -960,6 +1011,20 @@ body {
   border-radius: 6px !important;
   font-size: 0.82rem !important;
   padding: 0 4px !important;
+  cursor: pointer !important;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.sga-doc-btn-det:hover {
+  background-color: #475569 !important;
+  color: #ffffff !important;
+  border-color: #475569 !important;
+  transform: translateY(-1.5px);
+  box-shadow: 0 4px 12px rgba(71, 85, 105, 0.22) !important;
+}
+
+.sga-doc-btn-det:active {
+  transform: translateY(0.5px) scale(0.98);
 }
 
 .sga-doc-btn-deact {
@@ -970,6 +1035,44 @@ body {
   border-radius: 6px !important;
   font-size: 0.82rem !important;
   padding: 0 4px !important;
+  cursor: pointer !important;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.sga-doc-btn-deact:hover {
+  background-color: #dc3545 !important;
+  color: #ffffff !important;
+  border-color: #dc3545 !important;
+  transform: translateY(-1.5px);
+  box-shadow: 0 4px 12px rgba(220, 53, 69, 0.25) !important;
+}
+
+.sga-doc-btn-deact:active {
+  transform: translateY(0.5px) scale(0.98);
+}
+
+.sga-doc-btn-act {
+  flex: 1;
+  border-color: #198754 !important;
+  color: #198754 !important;
+  font-weight: 700 !important;
+  border-radius: 6px !important;
+  font-size: 0.82rem !important;
+  padding: 0 4px !important;
+  cursor: pointer !important;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.sga-doc-btn-act:hover {
+  background-color: #198754 !important;
+  color: #ffffff !important;
+  border-color: #198754 !important;
+  transform: translateY(-1.5px);
+  box-shadow: 0 4px 12px rgba(25, 135, 84, 0.25) !important;
+}
+
+.sga-doc-btn-act:active {
+  transform: translateY(0.5px) scale(0.98);
 }
 
 .sga-doc-preview-box {
@@ -1076,6 +1179,14 @@ body {
   flex-direction: column;
   justify-content: space-between;
   background-color: #ffffff;
+  cursor: default !important;
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.22s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.22s ease !important;
+}
+
+.sga-alb-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04) !important;
+  border-color: #cbd5e1 !important;
 }
 
 .sga-alb-badge-num {
@@ -1105,13 +1216,30 @@ body {
   line-height: 1.1;
 }
 
+.sga-alb-btn-detail,
 .sga-alb-btn-primary {
   flex: 1;
   background-color: #0d6efd !important;
   border-color: #0d6efd !important;
+  color: #ffffff !important;
   font-weight: 600 !important;
   border-radius: 6px !important;
   height: 32px !important;
+  cursor: pointer !important;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.sga-alb-btn-detail:hover,
+.sga-alb-btn-primary:hover {
+  background-color: #0b5ed7 !important;
+  border-color: #0a58ca !important;
+  transform: translateY(-1.5px);
+  box-shadow: 0 4px 12px rgba(13, 110, 253, 0.28) !important;
+}
+
+.sga-alb-btn-detail:active,
+.sga-alb-btn-primary:active {
+  transform: translateY(0.5px) scale(0.98);
 }
 
 .sga-alb-btn-pdf {
@@ -1119,6 +1247,17 @@ body {
   font-weight: 600 !important;
   border-radius: 6px !important;
   height: 32px !important;
+  cursor: pointer !important;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.sga-alb-btn-pdf:hover {
+  transform: translateY(-1.5px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08) !important;
+}
+
+.sga-alb-btn-pdf:active {
+  transform: translateY(0.5px) scale(0.98);
 }
 
 .sga-alb-btn-print {
@@ -1128,6 +1267,20 @@ body {
   font-weight: 600 !important;
   border-radius: 6px !important;
   height: 32px !important;
+  cursor: pointer !important;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.sga-alb-btn-print:hover {
+  background-color: #f1f5f9 !important;
+  border-color: #0d6efd !important;
+  color: #0d6efd !important;
+  transform: translateY(-1.5px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08) !important;
+}
+
+.sga-alb-btn-print:active {
+  transform: translateY(0.5px) scale(0.98);
 }
 
 .sga-alb-detail-banner {
@@ -1365,5 +1518,9 @@ body {
   .sga-qty-divider,
   .sga-qty-total {
     font-size: 1.35rem !important;
+  }
+
+  .sga-transfer-submit-btn {
+    width: 100% !important;
   }
 }

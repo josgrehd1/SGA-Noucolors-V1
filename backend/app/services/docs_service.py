@@ -26,169 +26,55 @@ class DocsService:
         )
         
         if result.get('status') == 'ok' and result.get('count', 0) == 0:
-            return {'pedidos': []}
+            return {'pedidos': [], 'total_count': 0, 'total_pages': 0, 'page': page}
         
-        docentries = [x['DOCENTRY'] for x in result.get('data', [])]
-        lineas = SapRepository.get_data_from_view(
-            view_name="NC_SGA_SOLICITUDES_POS_B1SLQuery",
-            filter={"DOCENTRY__in": docentries, "OBJTYPE": objtype},
-            all_results=True
-        )
-
-        if result.get('status') != 'ok' or lineas.get('status') != 'ok':
+        if result.get('status') != 'ok':
             raise Exception(f"SAP query failed: {result.get('message')}")
-        
-        cabeceras = result.get('data', [])
-        lineas_data = lineas.get('data', [])
-        lineas_por_docentry = defaultdict(list)
 
+        cabeceras = result.get('data', [])
+        docentries = [x['DOCENTRY'] for x in cabeceras]
+
+        lineas_data = []
+        if docentries:
+            chunk_size = 30
+            for i in range(0, len(docentries), chunk_size):
+                chunk = docentries[i:i + chunk_size]
+                lineas_res = SapRepository.get_data_from_view(
+                    view_name="NC_SGA_SOLICITUDES_POS_B1SLQuery",
+                    filter={"DOCENTRY__in": chunk},
+                    all_results=True
+                )
+                if lineas_res.get('status') == 'ok' and lineas_res.get('data'):
+                    lineas_data.extend(lineas_res['data'])
+
+        # --- Parse UBICACIONES (JSON string → list) ---
         for linea in lineas_data:
-            lineas_por_docentry[linea["DOCENTRY"]].append(linea)
+            if linea.get('UBICACIONES') and isinstance(linea['UBICACIONES'], str):
+                try:
+                    linea['UBICACIONES'] = json.loads(linea['UBICACIONES'])
+                except Exception:
+                    linea['UBICACIONES'] = []
+
+        # --- Agrupar líneas por DOCENTRY y adjuntar a cabeceras ---
+        lineas_por_docentry = defaultdict(list)
+        for linea in lineas_data:
+            raw_entry = linea.get("DOCENTRY")
+            if raw_entry is not None:
+                lineas_por_docentry[str(raw_entry)].append(linea)
 
         for cabecera in cabeceras:
-            lineas_filtradas = lineas_por_docentry.get(cabecera["DOCENTRY"], [])
+            cab_key = str(cabecera.get("DOCENTRY") or "").strip()
+            lineas_filtradas = lineas_por_docentry.get(cab_key, [])
             cabecera["LINEAS"] = lineas_filtradas
-            cabecera['CUENTA_DISPONIBLE'] = sum(1 for linea in lineas_filtradas if str(linea.get('STOCK_OK', '')).upper() == 'OK')
-            
-            fully_prep = 0
-            part_prep = 0
-            for linea in lineas_filtradas:
-                q_req = float(linea.get('QUANTITY') or linea.get('Quantity') or 0)
-                q_prep = float(linea.get('CTD_PREPARADA') or 0)
-                if q_req > 0 and q_prep >= q_req:
-                    fully_prep += 1
-                elif q_prep > 0:
-                    part_prep += 1
+            cabecera['CUENTA_DISPONIBLE'] = sum(1 for l in lineas_filtradas if str(l.get('STOCK_OK', '')).upper() == 'OK')
+            cabecera['CUENTA_PREPARADO'] = sum(1 for l in lineas_filtradas if float(l.get('CTD_PREPARADA', 0) or 0) > 0)
 
-            cabecera['CUENTA_PREPARADO'] = fully_prep
-            if part_prep > 0 or (fully_prep > 0 and fully_prep < len(lineas_filtradas)):
+            n = len(lineas_filtradas)
+            prep = cabecera['CUENTA_PREPARADO']
+            if prep > 0 and prep < n:
                 cabecera['IS_SEMI_PREPARADO'] = True
-            elif fully_prep == len(lineas_filtradas) and len(lineas_filtradas) > 0 and part_prep == 0:
+            elif prep == n and n > 0:
                 cabecera['IS_COMPLETAMENTE_PREPARADO'] = True
-
-        if docentries and str(objtype) in ["17", "22", "15", "1250000001"]:
-            try:
-                resource_map = {
-                    "17": "Orders",
-                    "22": "PurchaseOrders",
-                    "15": "DeliveryNotes",
-                    "1250000001": "InventoryTransferRequests"
-                }
-                res_name = resource_map.get(str(objtype), "Orders")
-                doc_res = SapRepository.get_data(
-                    resource=res_name,
-                    filter={"DocEntry__in": docentries},
-                    all_results=True,
-                    inline_count=False
-                )
-                if doc_res.get('status') == 'ok' and doc_res.get('data'):
-                    text_lines_by_doc = {}
-                    lines_by_doc = {}
-                    for doc_item in doc_res['data']:
-                        de = doc_item.get("DocEntry")
-                        t_list = DocsService._extract_texto_lineas_doc(doc_item)
-                        if t_list:
-                            text_lines_by_doc[de] = t_list
-                        lines_by_doc[de] = doc_item.get("DocumentLines", [])
-
-                    for cabecera in cabeceras:
-                        de = cabecera.get("DOCENTRY")
-                        if de in text_lines_by_doc and text_lines_by_doc[de]:
-                            cabecera["TEXTO_LINEAS"] = text_lines_by_doc[de]
-                            cabecera["PRIMERA_LINEA_TEXTO"] = text_lines_by_doc[de][0]
-                        
-                        # Fallback de líneas si la vista POS vino vacía
-                        if not cabecera.get("LINEAS") and de in lines_by_doc:
-                            raw_lines = lines_by_doc[de]
-                            cabecera["LINEAS"] = raw_lines
-                            if not cabecera.get('CUENTA_DISPONIBLE'):
-                                cabecera['CUENTA_DISPONIBLE'] = len(raw_lines)
-            except Exception as ex:
-                pass
-
-        # Consultar estado de preparación en @NC_SGAWEB_DOCS (filtrado por la página actual y sin conteo global)
-        try:
-            if docentries:
-                res_sga_docs = SapRepository.get_data(
-                    resource="NC_SGAWEB_DOCS",
-                    filter={"U_Estado": "O", "U_PedidoEntry__in": [str(d) for d in docentries]},
-                    selection=["DocEntry", "U_PedidoEntry", "U_PedidoLine", "U_ItemCode", "U_Quantity", "U_Semi", "U_Estado"],
-                    all_results=True,
-                    inline_count=False
-                )
-                if res_sga_docs.get('status') == 'ok' and res_sga_docs.get('data'):
-                    prep_by_entry = defaultdict(list)
-                    for r in res_sga_docs['data']:
-                        pe_str = str(r.get('U_PedidoEntry') or '').strip()
-                        if pe_str:
-                            prep_by_entry[pe_str].append(r)
-                            pe_clean = pe_str.lstrip('0')
-                            if pe_clean and pe_clean != pe_str:
-                                prep_by_entry[pe_clean].append(r)
-
-                    for cabecera in cabeceras:
-                        de_str = str(cabecera.get("DOCENTRY") or '').strip()
-                        dn_str = str(cabecera.get("DOCNUM") or '').strip()
-
-                        raw_lines = prep_by_entry.get(de_str, []) + prep_by_entry.get(dn_str, [])
-                        seen_ids = set()
-                        sga_lines = []
-                        for line in raw_lines:
-                            l_id = line.get('DocEntry')
-                            if l_id and l_id not in seen_ids:
-                                seen_ids.add(l_id)
-                                sga_lines.append(line)
-                            elif not l_id:
-                                sga_lines.append(line)
-
-                        if sga_lines:
-                            has_semi = any(str(r.get('U_Semi', '')).upper() == 'Y' for r in sga_lines)
-
-                            # Agrupar cantidades preparadas por (línea, artículo) — SOLO de este pedido
-                            prep_qty_by_line = defaultdict(float)
-                            for r in sga_lines:
-                                line_key = (r.get('U_PedidoLine'), str(r.get('U_ItemCode', '')).strip().upper())
-                                prep_qty_by_line[line_key] += float(r.get('U_Quantity', 0) or 0)
-
-                            order_lines = cabecera.get("LINEAS", [])
-                            total_lines_count = len(order_lines)
-                            fully_prep_count = 0
-                            partially_prep_count = 0
-
-                            for l in order_lines:
-                                # Intentar resolver el número de línea con todos los nombres posibles
-                                l_num = l.get('LINENUM') if l.get('LINENUM') is not None else \
-                                        l.get('LINE_NUM') if l.get('LINE_NUM') is not None else \
-                                        l.get('LineNum')
-                                l_item = str(l.get('ItemCode') or l.get('ITEMCODE') or '').strip().upper()
-                                req_q = float(l.get('Quantity') or l.get('QUANTITY') or 0)
-
-                                # Buscar exactamente por (linenum, itemcode) de ESTE pedido — sin fallback inter-pedido
-                                prep_q = prep_qty_by_line.get((l_num, l_item), 0)
-
-                                # Fallback acotado: solo por itemcode dentro de ESTE pedido (no cruza a otros)
-                                if prep_q <= 0 and l_item:
-                                    prep_q = sum(
-                                        v for k, v in prep_qty_by_line.items()
-                                        if k[1] == l_item
-                                    )
-
-                                if req_q > 0 and prep_q >= req_q:
-                                    fully_prep_count += 1
-                                elif prep_q > 0:
-                                    partially_prep_count += 1
-
-                            total_prep_qty = sum(prep_qty_by_line.values())
-                            if has_semi or partially_prep_count > 0 or (fully_prep_count > 0 and fully_prep_count < total_lines_count) or (fully_prep_count == 0 and total_prep_qty > 0):
-                                cabecera['IS_SEMI_PREPARADO'] = True
-                                cabecera['IS_COMPLETAMENTE_PREPARADO'] = False
-                            elif fully_prep_count == total_lines_count and total_lines_count > 0 and partially_prep_count == 0:
-                                cabecera['IS_COMPLETAMENTE_PREPARADO'] = True
-                                cabecera['IS_SEMI_PREPARADO'] = False
-
-                            cabecera['CUENTA_PREPARADO'] = fully_prep_count
-        except Exception:
-            pass
 
         total_count = result.get('count', 0)
         total_pages = (total_count + per_page - 1) // per_page if per_page else 1
@@ -228,11 +114,11 @@ class DocsService:
     @staticmethod
     def _build_docs_filter(filters, objtype, ver_inactivos=False):
         sap_filter = {"OBJTYPE": str(objtype)}
-        if str(objtype) == "17" and not ver_inactivos:
-            sap_filter["U_NC_INC_PRDMX"] = "Y"
-        
-        if ver_inactivos:
-            sap_filter["U_NC_INC_PRDMX"] = "N"
+        if str(objtype) == "17":
+            if ver_inactivos:
+                sap_filter["U_NC_INC_PRDMX"] = "N"
+            else:
+                sap_filter["U_NC_INC_PRDMX"] = "Y"
 
         if filters.get('docnum'):
             val = str(filters['docnum']).replace('#', '').strip()
@@ -253,36 +139,54 @@ class DocsService:
         return sap_filter
 
     @staticmethod
-    def get_detalle_documento(page=1, per_page=20, filters=None):
+    def _build_lineas_filter(filters):
         sap_filter = {}
         if filters.get('docentry'):
-            sap_filter["DOCENTRY"] = int(filters['docentry'])
-        if filters.get('objtype'):
-            sap_filter["OBJTYPE"] = str(filters['objtype'])
+            val = filters['docentry']
+            # DOCENTRY es numérico en SAP OData — NO ponemos OBJTYPE porque la vista POS no lo tiene
+            sap_filter["DOCENTRY"] = int(val) if str(val).isdigit() else val
         if filters.get('itemcode'):
-            sap_filter["ITEMCODE__contains"] = str(filters['itemcode'])
+            sap_filter["ITEMCODE__contains"] = str(filters['itemcode']).upper()
+        if filters.get('itemname'):
+            sap_filter["ITEMNAME__contains"] = str(filters['itemname']).upper()
+        return sap_filter
+
+    @staticmethod
+    def get_detalle_documento(page=1, per_page=20, filters=None):
+        sap_filter = DocsService._build_lineas_filter(filters or {})
 
         result = SapRepository.get_data_from_view(
             view_name="NC_SGA_SOLICITUDES_POS_B1SLQuery",
             filter=sap_filter,
+            orderby="BIN_STD",
+            order_direction="asc",
             all_results=True
         )
 
         data = result.get('data', []) if result.get('status') == 'ok' else []
         if not data and filters.get('docentry'):
-            try:
-                sap_filter_dn = {"DOCNUM": int(filters['docentry'])}
-                if filters.get('objtype'):
-                    sap_filter_dn["OBJTYPE"] = str(filters['objtype'])
-                result_dn = SapRepository.get_data_from_view(
+            val = filters['docentry']
+            # Fallback 1: Buscar por DOCENTRY sin filtro de OBJTYPE
+            res_no_obj = SapRepository.get_data_from_view(
+                view_name="NC_SGA_SOLICITUDES_POS_B1SLQuery",
+                filter={"DOCENTRY": int(val) if str(val).isdigit() else val},
+                orderby="BIN_STD",
+                order_direction="asc",
+                all_results=True
+            )
+            if res_no_obj.get('status') == 'ok' and res_no_obj.get('data'):
+                data = res_no_obj['data']
+            else:
+                # Fallback 2: Buscar por DOCNUM
+                res_dn = SapRepository.get_data_from_view(
                     view_name="NC_SGA_SOLICITUDES_POS_B1SLQuery",
-                    filter=sap_filter_dn,
+                    filter={"DOCNUM": int(val) if str(val).isdigit() else val},
+                    orderby="BIN_STD",
+                    order_direction="asc",
                     all_results=True
                 )
-                if result_dn.get('status') == 'ok' and result_dn.get('data'):
-                    data = result_dn['data']
-            except Exception:
-                pass
+                if res_dn.get('status') == 'ok' and res_dn.get('data'):
+                    data = res_dn['data']
         for row in data:
             if row.get('UBICACIONES'):
                 if isinstance(row['UBICACIONES'], str):
@@ -293,23 +197,35 @@ class DocsService:
             else:
                 row['UBICACIONES'] = []
 
-        # Si el documento es un Pedido de Compra (OBJTYPE == '22'), adjuntar las necesidades/solicitudes de stock
+        # Si el documento es un Pedido de Compra (OBJTYPE == '22'), adjuntar las necesidades de forma rápida en 1 sola consulta SQL
         objtype_filter = str(filters.get('objtype', '')) if filters else ''
         first_objtype = str(data[0].get('OBJTYPE', '')) if data and data[0].get('OBJTYPE') else ''
-        if objtype_filter == '22' or first_objtype == '22':
-            from app.services.product_service import ProductService
-            unique_items = {str(row.get('ITEMCODE')).strip() for row in data if row.get('ITEMCODE')}
-            calls_map = {}
-            for item in unique_items:
-                try:
-                    res_calls = ProductService.get_product_calls(item)
-                    calls_map[item] = res_calls.get("calls", [])[:3]
-                except Exception as ex:
-                    print(f"[DocsService] Error al obtener necesidades para item {item}: {ex}")
-                    calls_map[item] = []
-            for row in data:
-                item_code = str(row.get('ITEMCODE', '')).strip()
-                row['NECESIDADES'] = calls_map.get(item_code, [])
+        if (objtype_filter == '22' or first_objtype == '22') and data:
+            try:
+                unique_items = list({str(row.get('ITEMCODE')).strip() for row in data if row.get('ITEMCODE')})
+                if unique_items:
+                    needs_res = SapRepository.get_data_from_view(
+                        view_name="NC_SGA_NECESIDADES_B1SLQuery",
+                        filter={"ITEMCODE__in": unique_items} if len(unique_items) > 1 else {"ITEMCODE": unique_items[0]},
+                        all_results=True
+                    )
+                    needs_by_item = defaultdict(list)
+                    if needs_res.get('status') == 'ok' and needs_res.get('data'):
+                        # Ordenar de más actual a más antigua por DOCDATE o DOCENTRY desc
+                        sorted_needs = sorted(
+                            needs_res['data'],
+                            key=lambda x: (str(x.get('DOCDATE') or ''), int(x.get('DOCENTRY') or x.get('DOCNUM') or 0)),
+                            reverse=True
+                        )
+                        for n in sorted_needs:
+                            it = str(n.get('ITEMCODE') or '').strip()
+                            if it and len(needs_by_item[it]) < 20:
+                                needs_by_item[it].append(n)
+                    for row in data:
+                        it = str(row.get('ITEMCODE', '')).strip()
+                        row['NECESIDADES'] = needs_by_item.get(it, [])[:20]
+            except Exception as ex:
+                print(f"[DocsService] Error al obtener necesidades agrupadas: {ex}")
 
         return {
             'info': data,

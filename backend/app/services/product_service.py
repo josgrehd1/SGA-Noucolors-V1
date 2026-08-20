@@ -224,7 +224,13 @@ class ProductService:
         except Exception as ex:
             print(f"[ProductService] Error consultando desglose de almacenes: {ex}")
 
+        # Ordenar necesidades de más actual a más antigua y limitar a las últimas 20
+        calls.sort(
+            key=lambda x: (str(x.get("DOCDATE") or ""), int(x.get("DOCENTRY") or x.get("DOCNUM") or x.get("LLAMADA") or 0)),
+            reverse=True
+        )
+
         return {
-            "calls": calls,
+            "calls": calls[:20],
             "whs_committed": whs_committed
         }

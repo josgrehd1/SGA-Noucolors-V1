@@ -1,12 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Card, Input, InputNumber, Button, Tag, Typography, Row, Col, Space, Alert, Empty, Spin, message, Tooltip } from 'antd';
-import { SwapOutlined, CheckOutlined, BoxPlotOutlined, EnvironmentOutlined, WarningOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import {
+  SwapOutlined,
+  CheckOutlined,
+  CheckCircleFilled,
+  CloseCircleFilled,
+  LoadingOutlined,
+  BoxPlotOutlined,
+  EnvironmentOutlined,
+  WarningOutlined,
+  ThunderboltOutlined
+} from '@ant-design/icons';
 import client from '../../utils/client';
 
 const { Title, Text } = Typography;
 
 export const SemiPrepareModal = ({ open, document, onClose, onSuccess }) => {
   const [targetBin, setTargetBin] = useState('01-PDTE');
+  const [isBinValid, setIsBinValid] = useState(null);
+  const [validatingBin, setValidatingBin] = useState(false);
+  const [binMsg, setBinMsg] = useState('');
   const [quantities, setQuantities] = useState({});
   const [lines, setLines] = useState([]);
   const [loadingLines, setLoadingLines] = useState(false);
@@ -193,10 +206,38 @@ export const SemiPrepareModal = ({ open, document, onClose, onSuccess }) => {
   const inStockLinesCount = totalLinesCount - outOfStockLinesCount;
   const activeSelectedQtyCount = Object.values(quantities).reduce((acc, q) => acc + (q > 0 ? 1 : 0), 0);
 
+  const handleTargetBinChange = async (val) => {
+    const uppercaseVal = (val || '').toUpperCase();
+    setTargetBin(uppercaseVal);
+    const clean = uppercaseVal.trim();
+    if (!clean) {
+      setIsBinValid(null);
+      setBinMsg('');
+      setValidatingBin(false);
+      return;
+    }
+    setValidatingBin(true);
+    try {
+      const res = await client.get(`/ubicacion-existe/${encodeURIComponent(clean)}`);
+      if (res.existe) {
+        setIsBinValid(true);
+        setBinMsg('Ubicación destino válida');
+      } else {
+        setIsBinValid(false);
+        setBinMsg(res.message || 'La ubicación no existe en SAP');
+      }
+    } catch {
+      setIsBinValid(false);
+      setBinMsg('Error comprobando ubicación');
+    } finally {
+      setValidatingBin(false);
+    }
+  };
+
   return (
     <Modal
       title={
-        <div>
+        <div style={{ paddingBottom: 6 }}>
           <Title level={4} style={{ margin: 0, color: '#1f2937' }}>
             <SwapOutlined style={{ marginRight: 8, color: '#fa8c16' }} />
             Semi-Preparar Pedido #{document.DOCNUM || document.DocNum} ({document.CARDNAME || 'Cliente'})
@@ -218,12 +259,12 @@ export const SemiPrepareModal = ({ open, document, onClose, onSuccess }) => {
           type="primary"
           icon={<CheckOutlined />}
           loading={submitting}
-          disabled={loadingLines || activeSelectedQtyCount === 0}
+          disabled={loadingLines || activeSelectedQtyCount === 0 || isBinValid === false || validatingBin}
           onClick={handleConfirm}
           className="sga-semiprep-btn-submit"
           style={{
-            backgroundColor: activeSelectedQtyCount > 0 ? '#fa8c16' : '#d9d9d9',
-            borderColor: activeSelectedQtyCount > 0 ? '#fa8c16' : '#d9d9d9',
+            backgroundColor: activeSelectedQtyCount > 0 && isBinValid !== false ? '#fa8c16' : '#d9d9d9',
+            borderColor: activeSelectedQtyCount > 0 && isBinValid !== false ? '#fa8c16' : '#d9d9d9',
             fontWeight: 700,
             borderRadius: 6
           }}
@@ -273,12 +314,40 @@ export const SemiPrepareModal = ({ open, document, onClose, onSuccess }) => {
           </div>
           <Input
             value={targetBin}
-            onChange={(e) => setTargetBin(e.target.value)}
+            onChange={(e) => handleTargetBinChange(e.target.value)}
             placeholder="Código de ubicación destino (ej: 01-PDTE, BIN_SEMI, MESA-01)..."
             size="large"
             className="sga-semiprep-target-input"
-            style={{ borderRadius: 8, fontWeight: 600 }}
+            suffix={
+              validatingBin ? (
+                <Spin indicator={<LoadingOutlined style={{ fontSize: 16 }} spin />} />
+              ) : isBinValid === true ? (
+                <CheckCircleFilled style={{ color: '#198754', fontSize: 18 }} />
+              ) : isBinValid === false ? (
+                <CloseCircleFilled style={{ color: '#ef4444', fontSize: 18 }} />
+              ) : null
+            }
+            style={{
+              borderRadius: 8,
+              fontWeight: 600,
+              borderColor: isBinValid === true ? '#198754' : isBinValid === false ? '#ef4444' : '#d9d9d9',
+              boxShadow: isBinValid === true ? '0 0 0 2px rgba(25, 135, 84, 0.1)' : isBinValid === false ? '0 0 0 2px rgba(239, 68, 68, 0.1)' : 'none'
+            }}
           />
+          {binMsg && (
+            <div style={{
+              marginTop: 4,
+              fontSize: '0.8rem',
+              fontWeight: 700,
+              color: isBinValid ? '#198754' : '#ef4444',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4
+            }}>
+              {isBinValid ? <CheckCircleFilled /> : <CloseCircleFilled />}
+              {binMsg}
+            </div>
+          )}
         </div>
 
         {/* Lista de Líneas de Pedido a Semi-Preparar */}
@@ -348,6 +417,8 @@ export const SemiPrepareModal = ({ open, document, onClose, onSuccess }) => {
                                   min={0}
                                   max={reqQty}
                                   value={currentQty}
+                                  onFocus={(e) => e.target.select()}
+                                  onClick={(e) => e.target.select()}
                                   onChange={(val) => handleQtyChange(idx, val)}
                                   className="sga-semiprep-qty-input"
                                   style={{

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Row, Col, Card, Tag, Button, Space, Typography, Empty, Spin, Tooltip } from 'antd';
+import { Row, Col, Card, Tag, Button, Space, Typography, Empty, Spin, Tooltip, Modal } from 'antd';
 import {
   FileTextOutlined,
   CalendarOutlined,
@@ -9,13 +9,33 @@ import {
   InfoCircleOutlined,
   RightOutlined,
   UnorderedListOutlined,
-  StopOutlined
+  StopOutlined,
+  CheckOutlined
 } from '@ant-design/icons';
 
 const { Text } = Typography;
 
-export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDocument }) => {
+export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDocument, isInactiveView }) => {
   const [expandedDoc, setExpandedDoc] = useState(null);
+
+  const handleToggleActiveConfirm = (doc) => {
+    const isActivar = Boolean(isInactiveView || doc.U_Estado === 'I');
+    const docNum = doc.DOCNUM || doc.DOCENTRY;
+
+    Modal.confirm({
+      title: isActivar ? '¿Confirmar activación de pedido?' : '¿Confirmar desactivación de pedido?',
+      content: isActivar
+        ? `¿Estás seguro de que deseas reactivar el pedido #${docNum}? Volverá a aparecer en la lista de pedidos activos.`
+        : `¿Estás seguro de que deseas desactivar el pedido #${docNum}? Se moverá a la sección de pedidos inactivos.`,
+      okText: isActivar ? 'Sí, Activar' : 'Sí, Desactivar',
+      okType: isActivar ? 'primary' : 'danger',
+      cancelText: 'Cancelar',
+      okButtonProps: isActivar
+        ? { style: { backgroundColor: '#198754', borderColor: '#198754', fontWeight: 700 } }
+        : { danger: true, style: { fontWeight: 700 } },
+      onOk: () => onDeactivateDocument && onDeactivateDocument(doc)
+    });
+  };
 
   if (loading) {
     return (
@@ -40,7 +60,7 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
   return (
     <Row gutter={[16, 16]}>
       {documents.map((doc) => {
-        const totalLineas = doc.LINEAS?.length || (doc.DocumentLines?.length || 0);
+        const totalLineas = Array.isArray(doc.LINEAS) ? doc.LINEAS.length : 0;
         const gestionadas = Number(doc.CUENTA_PREPARADO) || 0;
         const disponibles = Number(doc.CUENTA_DISPONIBLE) || 0;
 
@@ -54,24 +74,33 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
           return hasPdte || isBinStdPdte || ctdPrep > 0;
         });
 
-        const isPurchase = String(doc.OBJTYPE || doc.ObjType) === '22';
-        const isTransfer = String(doc.OBJTYPE || doc.ObjType) === '1250000001' || String(doc.OBJTYPE || doc.ObjType) === '67';
+        const objTypeStr = String(doc.OBJTYPE || doc.ObjType || '17');
+        const isSales = objTypeStr === '17';
+        const isSalesReturn = objTypeStr === '234000031';
+        const isPurchase = objTypeStr === '22';
+        const isPurchaseReturn = objTypeStr === '234000032';
+        const isTransfer = objTypeStr === '1250000001' || objTypeStr === '67';
+        const isReturn = isSalesReturn || isPurchaseReturn;
+        const isInbound = isPurchase || isSalesReturn;
 
-        // Semi-prep PROPIO: NC_SGAWEB_DOCS tiene registros para ESTE pedido concreto
-        const isSemiPropio = !isPurchase && !isTransfer && (
+        // Semi-prep PROPIO: NC_SGAWEB_DOCS tiene registros para ESTE pedido concreto (solo ventas o con avance previo)
+        const isSemiPropio = (
           Boolean(doc.IS_SEMI_PREPARADO) ||
           (doc.SGA_PREPARADAS && doc.SGA_PREPARADAS.length > 0) ||
           (gestionadas > 0 && gestionadas < totalLineas)
         );
 
-        // Stock en PDTE AJENO: el artículo está en zona PDTE pero fue semipreparado para otro pedido
-        const isSemiAjeno = !isPurchase && !isTransfer && !isSemiPropio && hasLineInPdteOrSemi;
+        // Stock en PDTE AJENO: el artículo está en zona PDTE pero fue semipreparado para otro pedido (solo ventas)
+        const isSemiAjeno = isSales && !isSemiPropio && hasLineInPdteOrSemi;
 
         const isSemi = isSemiPropio || isSemiAjeno;
 
         const isPrep = !isSemi && (Boolean(doc.IS_COMPLETAMENTE_PREPARADO) || (totalLineas > 0 && gestionadas >= totalLineas));
-        const isSinStk = totalLineas > 0 && disponibles === 0 && gestionadas === 0 && !isSemi;
-        const isStkParcial = totalLineas > 0 && disponibles > 0 && disponibles < totalLineas && gestionadas === 0 && !isSemi;
+        const isSinStk = isSales && totalLineas > 0 && disponibles === 0 && gestionadas === 0 && !isSemi;
+        const isStkParcial = isSales && totalLineas > 0 && disponibles > 0 && disponibles < totalLineas && gestionadas === 0 && !isSemi;
+
+        const canManage = !isSales || isSemi || gestionadas > 0 || disponibles > 0;
+        const isInactive = Boolean(isInactiveView || doc.U_Estado === 'I');
 
         let stateKey = 'disponible';
         if (isSemiPropio) {
@@ -80,6 +109,8 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
           stateKey = 'stock_pdte_ajeno';
         } else if (isPrep) {
           stateKey = 'preparado';
+        } else if (isReturn) {
+          stateKey = 'devolucion';
         } else if (isSinStk) {
           stateKey = 'sin_stock';
         } else if (isStkParcial) {
@@ -89,6 +120,18 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
         }
 
         const THEMES = {
+          devolucion: {
+            borderTop: '#0d6efd', // Azul
+            badgeBg: '#e7f1ff',
+            badgeBorder: '#9ec5fe',
+            badgeColor: '#0d6efd',
+            kpiBg: '#e0edff',
+            kpiBorder: '#bae0ff',
+            kpiColor: '#0d6efd',
+            label: isSalesReturn ? '📥 Devolución Venta' : '📤 Devolución Compra',
+            labelColor: '#0d6efd',
+            labelBg: '#e7f1ff'
+          },
           preparado: {
             borderTop: '#00bcd4', // Turquesa
             badgeBg: '#e0f7fa',
@@ -97,7 +140,7 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
             kpiBg: '#e0f7fa',
             kpiBorder: '#80deea',
             kpiColor: '#00838f',
-            label: '🟢 Preparado',
+            label: isInbound ? '🟢 Recepcionado' : '🟢 Preparado',
             labelColor: '#00838f',
             labelBg: '#e0f7fa'
           },
@@ -145,7 +188,7 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
             kpiBg: '#e0edff',
             kpiBorder: '#bae0ff',
             kpiColor: '#0d6efd',
-            label: '🔵 Disponible',
+            label: isTransfer ? '🔄 Solicitud Traslado' : '🔵 Disponible',
             labelColor: '#0d6efd',
             labelBg: '#e7f1ff'
           },
@@ -170,10 +213,14 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
         const whscode = doc.LINEAS?.[0]?.WHSCODE || '01';
         const isExpanded = expandedDoc === doc.DOCENTRY;
 
+        const fromWhs = doc.FROM_WHS || doc.FromWarehouse || doc.LINEAS?.[0]?.FROM_WHS || doc.LINEAS?.[0]?.FromWarehouse || '01';
+        const toWhs = doc.TO_WHS || doc.ToWarehouse || doc.WHSCODE || doc.LINEAS?.[0]?.WHSCODE || doc.LINEAS?.[0]?.ToWarehouse || '13';
+        const isInterWhs = isTransfer && fromWhs && toWhs && String(fromWhs).toUpperCase() !== String(toWhs).toUpperCase();
+        const transferComments = doc.COMMENTS || doc.COMENTARIO || doc.Comments || doc.PRIMERA_LINEA_TEXTO || '';
+
         return (
           <Col xs={24} sm={12} md={8} lg={8} key={doc.DOCENTRY}>
             <Card
-              hoverable
               styles={{ body: { padding: '0 16px 16px 16px' } }}
               className="sga-doc-card-container"
               style={{
@@ -245,7 +292,7 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
 
                   <Space size={6}>
                     <Tag style={{ borderRadius: 6, fontSize: '0.78rem', fontFamily: 'monospace', background: '#f8fafc', borderColor: '#e2e8f0' }}>
-                      <ShopOutlined style={{ marginRight: 3 }} /> {whscode}
+                      <ShopOutlined style={{ marginRight: 3 }} /> {isTransfer ? `${fromWhs}➔${toWhs}` : whscode}
                     </Tag>
                     <Text type="secondary" style={{ fontSize: '0.78rem', fontFamily: 'monospace' }}>
                       <CalendarOutlined style={{ marginRight: 3 }} />
@@ -254,21 +301,74 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
                   </Space>
                 </div>
 
-                {/* 2. Fila del Cliente + Bloque KPI (G / D / T) */}
+                {/* 2. Fila del Cliente / Tipo de Traslado + Bloque KPI (G / D / T) */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 12 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 800, color: '#111827', fontSize: '0.95rem', lineHeight: 1.3 }} className="text-truncate">
-                      <UserOutlined style={{ marginRight: 6, color: '#6b7280' }} />
-                      {doc.CARDNAME || 'Cliente no especificado'}
-                    </div>
-                    {doc.CARDCODE && (
-                      <Text type="secondary" style={{ fontSize: '0.78rem', fontFamily: 'monospace', display: 'block', marginTop: 2 }}>
-                        {doc.CARDCODE}
-                      </Text>
+                    {isTransfer ? (
+                      <div>
+                        <div style={{ marginBottom: 4 }}>
+                          {isInterWhs ? (
+                            <span style={{
+                              backgroundColor: '#fff7ed',
+                              border: '1px solid #fed7aa',
+                              color: '#c2410c',
+                              fontWeight: 800,
+                              padding: '2px 8px',
+                              borderRadius: 6,
+                              fontSize: '0.82rem',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4
+                            }}>
+                              🔄 Traslado: Alm. #{fromWhs} ➔ Alm. #{toWhs}
+                            </span>
+                          ) : (
+                            <span style={{
+                              backgroundColor: '#eff6ff',
+                              border: '1px solid #bfdbfe',
+                              color: '#1d4ed8',
+                              fontWeight: 800,
+                              padding: '2px 8px',
+                              borderRadius: 6,
+                              fontSize: '0.82rem',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4
+                            }}>
+                              📦 Traslado Interno (Alm. #{fromWhs})
+                            </span>
+                          )}
+                        </div>
+                        {transferComments && (
+                          <div style={{
+                            fontSize: '0.78rem',
+                            color: '#475569',
+                            backgroundColor: '#f8fafc',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: 6,
+                            padding: '4px 8px',
+                            lineHeight: 1.3
+                          }} className="text-truncate" title={transferComments}>
+                            💬 <strong>{transferComments}</strong>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div>
+                        <div style={{ fontWeight: 800, color: '#111827', fontSize: '0.95rem', lineHeight: 1.3 }} className="text-truncate">
+                          <UserOutlined style={{ marginRight: 6, color: '#6b7280' }} />
+                          {doc.CARDNAME || 'Cliente no especificado'}
+                        </div>
+                        {doc.CARDCODE && (
+                          <Text type="secondary" style={{ fontSize: '0.78rem', fontFamily: 'monospace', display: 'block', marginTop: 2 }}>
+                            {doc.CARDCODE}
+                          </Text>
+                        )}
+                      </div>
                     )}
                   </div>
 
-                  {/* Bloque KPI: G (Gestionadas) / D (Disponibles) / T (Total) */}
+                  {/* Bloque KPI: G / D / T para todos los documentos, excepto Solicitudes de Traslado (Stock) que usan G / T */}
                   <div
                     style={{
                       backgroundColor: theme.kpiBg,
@@ -276,7 +376,7 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
                       borderRadius: 8,
                       padding: '3px 8px',
                       textAlign: 'center',
-                      minWidth: 80,
+                      minWidth: isTransfer ? 60 : 80,
                       flexShrink: 0
                     }}
                   >
@@ -292,8 +392,12 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
                       }}
                     >
                       <span>{gestionadas}</span>
-                      <span style={{ opacity: 0.4, padding: '0 2px' }}>/</span>
-                      <span>{disponibles}</span>
+                      {!isTransfer && (
+                        <>
+                          <span style={{ opacity: 0.4, padding: '0 2px' }}>/</span>
+                          <span>{disponibles}</span>
+                        </>
+                      )}
                       <span style={{ opacity: 0.4, padding: '0 2px' }}>/</span>
                       <span>{totalLineas}</span>
                     </div>
@@ -309,14 +413,14 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
                       }}
                     >
                       <span style={{ flex: 1 }}>G</span>
-                      <span style={{ flex: 1 }}>D</span>
+                      {!isTransfer && <span style={{ flex: 1 }}>D</span>}
                       <span style={{ flex: 1 }}>T</span>
                     </div>
                   </div>
                 </div>
 
-                {/* 3. Línea de Texto Especial del Pedido (si existe) */}
-                {doc.PRIMERA_LINEA_TEXTO && (
+                {/* 3. Línea de Texto Especial del Pedido (si existe y no es traslado) */}
+                {doc.PRIMERA_LINEA_TEXTO && !isTransfer && (
                   <div
                     className="sga-doc-info-banner text-truncate"
                     title={doc.PRIMERA_LINEA_TEXTO}
@@ -326,8 +430,8 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
                   </div>
                 )}
 
-                {/* 4. Comentarios del Pedido (si existen) */}
-                {doc.COMMENTS && (
+                {/* 4. Comentarios del Pedido (si existen y no es traslado) */}
+                {doc.COMMENTS && !isTransfer && (
                   <div
                     className="sga-doc-comments-banner text-truncate"
                     title={doc.COMMENTS}
@@ -341,14 +445,16 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
               {/* 4. Botonera Inferior */}
               <div>
                 <div className="sga-doc-action-bar">
-                  {/* Botón Gest. */}
-                  <Button
-                    type="default"
-                    onClick={() => onOpenDetail(doc)}
-                    className="sga-doc-btn-gest"
-                  >
-                    Gest. <RightOutlined style={{ fontSize: '0.7rem' }} />
-                  </Button>
+                  {/* Botón Gest. - Solo si hay stock para gestionar o es semi/prep o es compra/traslado */}
+                  {canManage && (
+                    <Button
+                      type="default"
+                      onClick={() => onOpenDetail(doc)}
+                      className="sga-doc-btn-gest"
+                    >
+                      Gest. <RightOutlined style={{ fontSize: '0.7rem' }} />
+                    </Button>
+                  )}
 
                   {/* Botón ≡ Det. */}
                   <Button
@@ -359,15 +465,27 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
                     <UnorderedListOutlined /> Det.
                   </Button>
 
-                  {/* Botón Desact. */}
-                  <Button
-                    type="default"
-                    danger
-                    onClick={() => onDeactivateDocument && onDeactivateDocument(doc)}
-                    className="sga-doc-btn-deact"
-                  >
-                    Desact. <RightOutlined style={{ fontSize: '0.7rem' }} />
-                  </Button>
+                  {/* Botón Activar (Verde) / Desactivar (Rojo) - EXCLUSIVO de Pedidos de Venta */}
+                  {isSales && (
+                    isInactive ? (
+                      <Button
+                        type="default"
+                        onClick={() => handleToggleActiveConfirm(doc)}
+                        className="sga-doc-btn-act"
+                      >
+                        <CheckOutlined /> Activar
+                      </Button>
+                    ) : (
+                      <Button
+                        type="default"
+                        danger
+                        onClick={() => handleToggleActiveConfirm(doc)}
+                        className="sga-doc-btn-deact"
+                      >
+                        Desact. <RightOutlined style={{ fontSize: '0.7rem' }} />
+                      </Button>
+                    )
+                  )}
                 </div>
 
                 {/* Vista previa desplegable de líneas */}

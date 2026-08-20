@@ -42,19 +42,25 @@ class AlbaranService:
     @staticmethod
     def _build_albaranes_filter(filters):
         sap_filter = {}
-        nivel = str(session.get('sap_nivel') or '').strip().upper()
+        emp_id = session.get('sap_employee_id')
 
-        # Supervisores (nivel 'S') pueden ver TODOS los albaranes finalizados por cualquier usuario.
-        # Operarios y resto de usuarios (nivel != 'S') solo ven sus propios albaranes.
-        if nivel != 'S':
-            if emp_id := session.get('sap_employee_id'):
-                sap_filter["DocumentsOwner"] = emp_id
+        # Filtrar exclusivamente los albaranes creados por el operario autenticado en SAP (U_BXPEmpID)
+        if emp_id:
+            try:
+                sap_filter["U_BXPEmpID"] = int(emp_id)
+            except (ValueError, TypeError):
+                sap_filter["U_BXPEmpID"] = emp_id
 
         if filters.get('doc'):
-            sap_filter["DocNum"] = int(filters['doc'])
+            val = str(filters['doc']).replace('#', '').strip()
+            if val.isdigit():
+                sap_filter["DocNum"] = int(val)
 
         if filters.get('cliente'):
-            sap_filter["CardCode"] = str.upper(filters['cliente'])
+            c_val = str(filters['cliente']).strip()
+            if ' - ' in c_val:
+                c_val = c_val.split(' - ')[0].strip()
+            sap_filter["CardCode"] = c_val.upper()
 
         if filters.get('date_from') and filters.get('date_to'):
             sap_filter["DocDate__between"] = [filters['date_from'], filters['date_to']]

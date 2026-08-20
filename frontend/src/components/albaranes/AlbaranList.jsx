@@ -51,8 +51,6 @@ export const AlbaranList = ({ albaranes = [], onSelectAlbaran, loading }) => {
         return (
           <Col xs={24} sm={12} lg={8} key={docentry || docnum}>
             <Card
-              hoverable
-              onClick={() => onSelectAlbaran(alb)}
               className="sga-alb-card"
               styles={{ body: { padding: 16 } }}
             >
@@ -106,6 +104,7 @@ export const AlbaranList = ({ albaranes = [], onSelectAlbaran, loading }) => {
                   size="small"
                   icon={<EyeOutlined />}
                   onClick={() => onSelectAlbaran(alb)}
+                  className="sga-alb-btn-detail"
                   style={{ flex: 1, borderRadius: 6 }}
                 >
                   Ver Detalle
@@ -116,6 +115,7 @@ export const AlbaranList = ({ albaranes = [], onSelectAlbaran, loading }) => {
                   size="small"
                   icon={<PrinterOutlined />}
                   onClick={(e) => handlePrintPdf(e, docentry)}
+                  className="sga-alb-btn-print"
                   style={{ flex: 1, borderRadius: 6 }}
                   title="Enviar a impresora de red del servidor"
                 >

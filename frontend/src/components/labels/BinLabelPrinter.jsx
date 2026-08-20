@@ -99,6 +99,8 @@ export const BinLabelPrinter = () => {
               style={{ width: '100%' }}
               size="large"
               value={formik.values.copies}
+              onFocus={(e) => e.target.select()}
+              onClick={(e) => e.target.select()}
               onChange={(val) => formik.setFieldValue('copies', val)}
               onBlur={() => formik.setFieldTouched('copies', true)}
               status={formik.touched.copies && formik.errors.copies ? 'error' : ''}

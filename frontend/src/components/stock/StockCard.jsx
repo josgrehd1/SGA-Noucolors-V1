@@ -5,7 +5,8 @@ import {
   EnvironmentOutlined,
   ShopOutlined,
   BulbOutlined,
-  SwapOutlined
+  SwapOutlined,
+  EditOutlined
 } from '@ant-design/icons';
 
 const { Text, Title } = Typography;
@@ -73,117 +74,146 @@ export const StockCard = ({ item, onOpenDetail, onOpenPrint }) => {
         </div>
       </div>
 
-      {/* 4 Tarjetas de Acción Rápidas (Micro-Cards) */}
+      {/* 5 Tarjetas de Acción Rápidas (Micro-Cards) */}
       <div style={{ paddingTop: 10, borderTop: '1px solid #f1f5f9' }}>
         <Row gutter={[6, 6]}>
           <Col span={12}>
             <div
-              className="action-card-btn sga-action-microcard sga-action-microcard-ubis"
+              className="action-card-btn sga-action-microcard"
               onClick={() => onOpenDetail(item, 'ubis')}
             >
               <div
                 style={{
-                  width: 26,
-                  height: 26,
+                  width: 24,
+                  height: 24,
                   borderRadius: 6,
-                  backgroundColor: '#3b82f6',
-                  color: '#fff',
+                  backgroundColor: '#f1f5f9',
+                  color: '#0d6efd',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: 13,
+                  fontSize: 12,
                   flexShrink: 0
                 }}
               >
                 <EnvironmentOutlined />
               </div>
-              <div style={{ lineHeight: 1.1 }}>
-                <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#1e40af' }}>Ubicaciones</div>
-                <div style={{ fontSize: '0.65rem', color: '#3b82f6' }}>Estanterías</div>
+              <div style={{ lineHeight: 1.15 }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1e293b' }}>Ubicaciones</div>
+                <div style={{ fontSize: '0.65rem', color: '#64748b' }}>Estanterías</div>
               </div>
             </div>
           </Col>
 
           <Col span={12}>
             <div
-              className="action-card-btn sga-action-microcard sga-action-microcard-whs"
+              className="action-card-btn sga-action-microcard"
               onClick={() => onOpenDetail(item, 'whs')}
             >
               <div
                 style={{
-                  width: 26,
-                  height: 26,
+                  width: 24,
+                  height: 24,
                   borderRadius: 6,
-                  backgroundColor: '#10b981',
-                  color: '#fff',
+                  backgroundColor: '#f1f5f9',
+                  color: '#0d6efd',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: 13,
+                  fontSize: 12,
                   flexShrink: 0
                 }}
               >
                 <ShopOutlined />
               </div>
-              <div style={{ lineHeight: 1.1 }}>
-                <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#065f46' }}>Almacenes</div>
-                <div style={{ fontSize: '0.65rem', color: '#10b981' }}>Stock SAP</div>
+              <div style={{ lineHeight: 1.15 }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1e293b' }}>Almacenes</div>
+                <div style={{ fontSize: '0.65rem', color: '#64748b' }}>Stock SAP</div>
               </div>
             </div>
           </Col>
 
           <Col span={12}>
             <div
-              className="action-card-btn sga-action-microcard sga-action-microcard-nec"
+              className="action-card-btn sga-action-microcard"
+              onClick={() => onOpenDetail(item, 'default_bin')}
+            >
+              <div
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 6,
+                  backgroundColor: '#eff6ff',
+                  color: '#2563eb',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 12,
+                  flexShrink: 0
+                }}
+              >
+                <EditOutlined />
+              </div>
+              <div style={{ lineHeight: 1.15 }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1e293b' }}>Ubi Defecto</div>
+                <div style={{ fontSize: '0.65rem', color: '#2563eb', fontWeight: 600 }}>Predeterminada</div>
+              </div>
+            </div>
+          </Col>
+
+          <Col span={12}>
+            <div
+              className="action-card-btn sga-action-microcard"
               onClick={() => onOpenDetail(item, 'nec')}
             >
               <div
                 style={{
-                  width: 26,
-                  height: 26,
+                  width: 24,
+                  height: 24,
                   borderRadius: 6,
-                  backgroundColor: '#f59e0b',
-                  color: '#fff',
+                  backgroundColor: '#f1f5f9',
+                  color: '#0d6efd',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: 13,
+                  fontSize: 12,
                   flexShrink: 0
                 }}
               >
                 <BulbOutlined />
               </div>
-              <div style={{ lineHeight: 1.1 }}>
-                <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#92400e' }}>Necesidades</div>
-                <div style={{ fontSize: '0.65rem', color: '#d97706' }}>ATP & Compras</div>
+              <div style={{ lineHeight: 1.15 }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1e293b' }}>Necesidades</div>
+                <div style={{ fontSize: '0.65rem', color: '#64748b' }}>ATP & Compras</div>
               </div>
             </div>
           </Col>
 
-          <Col span={12}>
+          <Col span={24}>
             <div
-              className="action-card-btn sga-action-microcard sga-action-microcard-mov"
+              className="action-card-btn sga-action-microcard"
               onClick={() => onOpenDetail(item, 'mov')}
+              style={{ justifyContent: 'center' }}
             >
               <div
                 style={{
-                  width: 26,
-                  height: 26,
+                  width: 24,
+                  height: 24,
                   borderRadius: 6,
-                  backgroundColor: '#8b5cf6',
-                  color: '#fff',
+                  backgroundColor: '#f1f5f9',
+                  color: '#0d6efd',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: 13,
+                  fontSize: 12,
                   flexShrink: 0
                 }}
               >
                 <SwapOutlined />
               </div>
-              <div style={{ lineHeight: 1.1 }}>
-                <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#5b21b6' }}>Movimientos</div>
-                <div style={{ fontSize: '0.65rem', color: '#8b5cf6' }}>Historial</div>
+              <div style={{ lineHeight: 1.15 }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1e293b', marginRight: 6 }}>Movimientos</span>
+                <span style={{ fontSize: '0.65rem', color: '#64748b' }}>(Historial de entradas y salidas)</span>
               </div>
             </div>
           </Col>

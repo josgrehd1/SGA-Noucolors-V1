@@ -54,13 +54,12 @@ const menuGroups = [
     ],
   },
   {
-    title: 'Operaciones de Stock',
+    title: 'Inventario',
     icon: <AppstoreOutlined />,
     color: '#262626',
     bgLight: '#f5f5f5',
     items: [
       { label: 'Inventario', icon: <UnorderedListOutlined />, color: '#262626', bgLight: '#f5f5f5', path: '/inventario' },
-      { label: 'Inv. Ciego', icon: <EyeInvisibleOutlined />, color: '#faad14', bgLight: '#fffbe6', path: '/inventario', state: { ciego: true } },
     ],
   },
   {

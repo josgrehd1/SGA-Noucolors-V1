@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Modal, Card, Tag, Typography, Button, Row, Col, Space, Input, InputNumber, Select, Tooltip, Spin, Empty, message, Collapse } from 'antd';
+import { Modal, Card, Tag, Typography, Button, Row, Col, Space, Input, InputNumber, Select, Tooltip, Spin, Empty, message, Collapse, Popconfirm } from 'antd';
 import {
   SwapOutlined,
   EnvironmentOutlined,
   CheckCircleOutlined,
   CheckCircleFilled,
+  CloseCircleFilled,
+  LoadingOutlined,
   PrinterOutlined,
   ShopOutlined,
   EditOutlined,
@@ -13,12 +15,59 @@ import {
   BarcodeOutlined,
   CheckOutlined,
   BulbOutlined,
-  CommentOutlined
+  CommentOutlined,
+  DeleteOutlined,
+  LockFilled,
+  MessageOutlined
 } from '@ant-design/icons';
 import client from '../../utils/client';
 import { MultiBinDistributionModal } from './MultiBinDistributionModal';
+import { ChangeDefaultBinModal } from '../stock/ChangeDefaultBinModal';
 
 const { Text } = Typography;
+
+// Helper de normalización robusta de líneas para soportar vistas SQL y Service Layer
+const normalizeLine = (line) => {
+  if (!line) return {};
+  const itemCode = line.ITEMCODE || line.ItemCode || line.item_code || '';
+  const itemName = line.ITEMNAME || line.ItemDescription || line.ItemName || line.item_name || 'Sin descripción';
+  const quantity = Number(line.QUANTITY ?? line.Quantity ?? line.quantity ?? line.CountQty ?? 0);
+  const lineNum = line.LINENUM ?? line.LineNum ?? line.LINE_NUM ?? line.line_num ?? 0;
+  const whsCode = line.WHSCODE || line.WhsCode || line.whs_code || line.WarehouseCode || '01';
+  const binStd = line.BIN_STD || line.BinStd || line.bin_std || line.U_BinCode || 'Sin Ubi';
+  const ctdPrep = Number(line.CTD_PREPARADA ?? line.CtdPreparada ?? line.U_Quantity ?? 0);
+  const stockOk = line.STOCK_OK || line.StockOk || (line.StockStatus === 'OK' ? 'OK' : '');
+  
+  let ubis = line.UBICACIONES || line.Ubicaciones || [];
+  if (typeof ubis === 'string') {
+    try {
+      ubis = JSON.parse(ubis);
+    } catch {
+      ubis = [];
+    }
+  }
+
+  return {
+    ...line,
+    ITEMCODE: itemCode,
+    ItemCode: itemCode,
+    ITEMNAME: itemName,
+    ItemDescription: itemName,
+    ItemName: itemName,
+    QUANTITY: quantity,
+    Quantity: quantity,
+    LINENUM: lineNum,
+    LineNum: lineNum,
+    WHSCODE: whsCode,
+    WhsCode: whsCode,
+    BIN_STD: binStd,
+    BinStd: binStd,
+    STOCK_OK: stockOk,
+    CTD_PREPARADA: ctdPrep,
+    UBICACIONES: Array.isArray(ubis) ? ubis : [],
+    Ubicaciones: Array.isArray(ubis) ? ubis : []
+  };
+};
 
 // Helper robusto para obtener el código de ubicación independiente de mayúsculas/minúsculas de la vista SAP
 const getBinCode = (u) => {
@@ -38,9 +87,13 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
   const [bultos, setBultos] = useState(1);
   const [printingBultos, setPrintingBultos] = useState(false);
   const [finishing, setFinishing] = useState(false);
-  const objType = document?.OBJTYPE || document?.ObjType || '17';
-  const isPurchase = String(objType) === '22';
-  const isTransfer = String(objType) === '1250000001' || String(objType) === '67';
+  const objType = String(document?.OBJTYPE || document?.ObjType || '17');
+  const isSalesReturn = objType === '234000031';
+  const isPurchase = objType === '22';
+  const isPurchaseReturn = objType === '234000032';
+  const isTransfer = objType === '1250000001' || objType === '67';
+  const isReturn = isSalesReturn || isPurchaseReturn;
+  const isInbound = isPurchase || isSalesReturn;
 
   // Carga dinámica de líneas de detalle
   const [loadingLines, setLoadingLines] = useState(false);
@@ -54,6 +107,22 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
   const [selectedBins, setSelectedBins] = useState({});
   const [selectedBinsTo, setSelectedBinsTo] = useState({});
   const [scannedItems, setScannedItems] = useState({});
+
+  // Estado para validación en tiempo real de artículos (ItemCode, BarCode, U_Tipoproducto)
+  const [itemValidationStatus, setItemValidationStatus] = useState({});
+  const [binToValidationStatus, setBinToValidationStatus] = useState({});
+
+  // Estado para Modal de Cambio de Ubicación Predeterminada
+  const [changeBinModal, setChangeBinModal] = useState({
+    open: false,
+    line: null,
+    idx: null,
+    itemCode: '',
+    itemName: '',
+    whsCode: '01',
+    currentBin: '',
+    ubisList: []
+  });
 
   // Estado para Modal de Reparto Multi-Ubicación
   const [multiBinModal, setMultiBinModal] = useState({
@@ -76,84 +145,104 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
     }
   }, [open]);
 
-  // Carga las líneas de detalle del pedido
+  // Carga inmediata y sincronización de líneas de detalle del pedido
   useEffect(() => {
     if (open && document) {
       const docEntry = document.DOCENTRY || document.DocEntry || document.DOCNUM;
-      const objType = document.OBJTYPE || document.ObjType || '17';
+      const rawInitial = Array.isArray(document.LINEAS) && document.LINEAS.length > 0
+        ? document.LINEAS
+        : (Array.isArray(document.DocumentLines) && document.DocumentLines.length > 0 ? document.DocumentLines : []);
+
+      const initialLines = rawInitial.map(normalizeLine);
+
+      // 1. Mostrar líneas de inmediato desde la memoria
+      setDetailLines(initialLines);
+
+      const initialQtys = {};
+      const initialScanned = {};
+      const initialBins = {};
+      const initialBinsTo = {};
+
+      initialLines.forEach((line, idx) => {
+        initialQtys[idx] = (line.CTD_PREPARADA && line.CTD_PREPARADA > 0) ? line.CTD_PREPARADA : 0;
+        if (line.BIN_DESTINO || line.U_BinTo) {
+          initialBinsTo[idx] = line.BIN_DESTINO || line.U_BinTo;
+        }
+      });
+
+      setPreparedQtys(initialQtys);
+      setScannedItems(initialScanned);
+      setSelectedBins(initialBins);
+      setSelectedBinsTo(initialBinsTo);
+      setLoadingLines(initialLines.length === 0 && Boolean(docEntry));
+
+      // 2. Traer el detalle completo con ubicaciones de SAP y preparadas (muy rápido)
       if (docEntry) {
-        setLoadingLines(true);
-        // Cargar líneas de detalle y líneas ya preparadas en paralelo
+        const objTypeVal = document.OBJTYPE || document.ObjType || '17';
         Promise.all([
-          client.get('/docs/detalle', { params: { docentry: docEntry, objtype: objType } }),
+          client.get('/docs/detalle', { params: { docentry: docEntry, objtype: objTypeVal } }),
           client.get(`/docs/preparadas/${docEntry}`)
         ])
           .then(([resDetalle, resPrep]) => {
-            let loadedLines = [];
-            if (resDetalle.status === 'ok' && Array.isArray(resDetalle.info) && resDetalle.info.length > 0) {
-              loadedLines = resDetalle.info;
-            } else if (resDetalle.status === 'ok' && Array.isArray(resDetalle.lineas) && resDetalle.lineas.length > 0) {
-              loadedLines = resDetalle.lineas;
-            } else if (Array.isArray(document.LINEAS) && document.LINEAS.length > 0) {
-              loadedLines = document.LINEAS;
-            } else {
-              loadedLines = [];
+            let loaded = [];
+            if (resDetalle && resDetalle.status === 'ok') {
+              const raw = resDetalle.info || resDetalle.lineas || [];
+              if (raw.length > 0) {
+                loaded = raw.map(normalizeLine);
+                setDetailLines(loaded);
+              }
             }
-            setDetailLines(loadedLines);
+            if (loaded.length === 0) {
+              loaded = initialLines;
+            }
 
-            const prepList = (resPrep.status === 'ok' && Array.isArray(resPrep.lineas)) ? resPrep.lineas : [];
+            const prepList = (resPrep && resPrep.status === 'ok' && Array.isArray(resPrep.lineas)) ? resPrep.lineas : [];
             setLineasPreparadas(prepList);
 
-            // Pre-rellenar estados de confirmación para que persistan al salir y volver a entrar
-            const initialQtys = {};
-            const initialScanned = {};
-            const initialBins = {};
-            const initialBinsTo = {};
+            if (prepList.length > 0 || loaded.length > 0) {
+              const updatedQtys = {};
+              const updatedScanned = {};
+              const updatedBins = {};
+              const updatedBinsTo = {};
 
-            loadedLines.forEach((line, idx) => {
-              const lineNum = line.LINENUM ?? line.LINE_NUM ?? idx;
-              const itemCode = (line.ITEMCODE || '').trim().toUpperCase();
+              loaded.forEach((line, idx) => {
+                const lineNum = line.LINENUM ?? line.LINE_NUM ?? idx;
+                const itemCode = (line.ITEMCODE || '').trim().toUpperCase();
 
-              // Buscar si la línea ya fue confirmada previamente en SAP / NC_SGAWEB_DOCS
-              const prep = prepList.find(lp => {
-                const lpLine = lp.U_PedidoLine;
-                const lpItem = (lp.U_ItemCode || '').trim().toUpperCase();
-                return (
-                  (String(lpLine) === String(lineNum) || String(lpLine) === String(idx)) &&
-                  (lpItem === itemCode || !lpItem)
-                ) || (lpItem === itemCode && lpItem !== '');
+                const prep = prepList.find(lp => {
+                  const lpLine = lp.U_PedidoLine;
+                  const lpItem = (lp.U_ItemCode || '').trim().toUpperCase();
+                  return (
+                    (String(lpLine) === String(lineNum) || String(lpLine) === String(idx)) &&
+                    (lpItem === itemCode || !lpItem)
+                  ) || (lpItem === itemCode && lpItem !== '');
+                });
+
+                if (prep) {
+                  updatedQtys[idx] = prep.U_Quantity ?? line.CTD_PREPARADA ?? 0;
+                  updatedScanned[idx] = line.ITEMCODE || '';
+                  updatedBins[idx] = prep.U_BinFrom || '';
+                  updatedBinsTo[idx] = prep.U_BinTo || '';
+                } else {
+                  updatedQtys[idx] = (line.CTD_PREPARADA && line.CTD_PREPARADA > 0) ? line.CTD_PREPARADA : 0;
+                  if (line.BIN_DESTINO || line.U_BinTo) {
+                    updatedBinsTo[idx] = line.BIN_DESTINO || line.U_BinTo;
+                  }
+                }
               });
 
-              if (prep) {
-                initialQtys[idx] = prep.U_Quantity ?? line.CTD_PREPARADA ?? 0;
-                initialScanned[idx] = line.ITEMCODE || '';
-                initialBins[idx] = prep.U_BinFrom || '';
-                initialBinsTo[idx] = prep.U_BinTo || '';
-              } else {
-                // Inicialmente siempre 0. El operario indica la cantidad o pulsa el icono del rayo ⚡ para autorellenar.
-                initialQtys[idx] = (line.CTD_PREPARADA && line.CTD_PREPARADA > 0) ? line.CTD_PREPARADA : 0;
-                if (line.BIN_DESTINO || line.U_BinTo) {
-                  initialBinsTo[idx] = line.BIN_DESTINO || line.U_BinTo;
-                }
-              }
-            });
-
-            setPreparedQtys(initialQtys);
-            setScannedItems(initialScanned);
-            setSelectedBins(initialBins);
-            setSelectedBinsTo(initialBinsTo);
+              setPreparedQtys(updatedQtys);
+              setScannedItems(updatedScanned);
+              setSelectedBins(updatedBins);
+              setSelectedBinsTo(updatedBinsTo);
+            }
           })
           .catch((err) => {
-            console.error('Error al consultar detalle del pedido:', err);
-            setDetailLines(document.LINEAS || []);
-            setLineasPreparadas([]);
+            console.error('Error sincronizando detalle del pedido:', err);
           })
           .finally(() => {
             setLoadingLines(false);
           });
-      } else {
-        setDetailLines(document.LINEAS || []);
-        setLineasPreparadas([]);
       }
     } else {
       setDetailLines([]);
@@ -162,6 +251,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
       setScannedItems({});
       setSelectedBins({});
       setSelectedBinsTo({});
+      setLoadingLines(false);
     }
   }, [open, document]);
 
@@ -291,6 +381,132 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
       ...prev,
       [idx]: itemCode
     }));
+    setItemValidationStatus((prev) => ({
+      ...prev,
+      [idx]: { isValid: true, isChecking: false, errorMsg: '' }
+    }));
+  };
+
+  const handleOpenChangeDefaultBin = (line, idx) => {
+    let ubis = [];
+    if (Array.isArray(line.UBICACIONES)) {
+      ubis = line.UBICACIONES;
+    } else if (typeof line.UBICACIONES === 'string') {
+      try {
+        ubis = JSON.parse(line.UBICACIONES);
+      } catch {
+        ubis = [];
+      }
+    }
+    setChangeBinModal({
+      open: true,
+      line,
+      idx,
+      itemCode: line.ITEMCODE,
+      itemName: line.ITEMNAME,
+      whsCode: line.WHSCODE || '01',
+      currentBin: line.BIN_STD || 'Sin Ubi',
+      ubisList: ubis
+    });
+  };
+
+  const handleDefaultBinSuccess = (newBin) => {
+    if (changeBinModal.idx !== null) {
+      const targetIdx = changeBinModal.idx;
+      setDetailLines((prev) =>
+        prev.map((l, i) => (i === targetIdx ? { ...l, BIN_STD: newBin } : l))
+      );
+      hasChangesRef.current = true;
+    }
+  };
+
+  const handleItemScanChange = async (idx, line, value) => {
+    const cleanVal = (value || '').trim();
+    setScannedItems((prev) => ({ ...prev, [idx]: value }));
+
+    if (!cleanVal) {
+      setItemValidationStatus((prev) => ({
+        ...prev,
+        [idx]: { isValid: null, isChecking: false, errorMsg: '' }
+      }));
+      return;
+    }
+
+    // 1. Comprobación directa inmediata por ItemCode
+    if (cleanVal.toUpperCase() === (line.ITEMCODE || '').toUpperCase()) {
+      setItemValidationStatus((prev) => ({
+        ...prev,
+        [idx]: { isValid: true, isChecking: false, errorMsg: '' }
+      }));
+      return;
+    }
+
+    // 2. Consultar al backend si coincide con ItemCode, BarCode o U_Tipoproducto del artículo
+    setItemValidationStatus((prev) => ({
+      ...prev,
+      [idx]: { isValid: null, isChecking: true, errorMsg: '' }
+    }));
+
+    try {
+      const res = await client.get('/producto-existe', {
+        params: {
+          'prod-search': cleanVal,
+          'prod-expect': line.ITEMCODE
+        }
+      });
+
+      if (res.matched || res.existe) {
+        // Auto-sustituir con el código real del artículo
+        const realCode = res.real_itemcode || line.ITEMCODE;
+        setScannedItems((prev) => ({ ...prev, [idx]: realCode }));
+        setItemValidationStatus((prev) => ({
+          ...prev,
+          [idx]: { isValid: true, isChecking: false, errorMsg: '' }
+        }));
+        message.success(`Artículo verificado: ${realCode}`);
+      } else {
+        setItemValidationStatus((prev) => ({
+          ...prev,
+          [idx]: { isValid: false, isChecking: false, errorMsg: res.message || 'Código incorrecto' }
+        }));
+      }
+    } catch (e) {
+      setItemValidationStatus((prev) => ({
+        ...prev,
+        [idx]: { isValid: false, isChecking: false, errorMsg: 'Error validando código' }
+      }));
+    }
+  };
+
+  const handleBinToChange = async (idx, val, targetWhs) => {
+    const cleanVal = (val || '').toUpperCase();
+    setSelectedBinsTo(prev => ({ ...prev, [idx]: cleanVal }));
+
+    if (!cleanVal.trim()) {
+      setBinToValidationStatus(prev => ({ ...prev, [idx]: null }));
+      return;
+    }
+
+    setBinToValidationStatus(prev => ({ ...prev, [idx]: { isChecking: true } }));
+    try {
+      const res = await client.get(`/ubicacion-existe/${encodeURIComponent(cleanVal.trim())}?whscode=${encodeURIComponent(targetWhs || '')}`);
+      if (res.existe) {
+        setBinToValidationStatus(prev => ({
+          ...prev,
+          [idx]: { isValid: true, isChecking: false, errorMsg: '' }
+        }));
+      } else {
+        setBinToValidationStatus(prev => ({
+          ...prev,
+          [idx]: { isValid: false, isChecking: false, errorMsg: res.message || `La ubicación no pertenece al almacén #${targetWhs}` }
+        }));
+      }
+    } catch (e) {
+      setBinToValidationStatus(prev => ({
+        ...prev,
+        [idx]: { isValid: false, isChecking: false, errorMsg: 'Error validando ubicación' }
+      }));
+    }
   };
 
   const handleConfirmLine = async (idx, line) => {
@@ -462,13 +678,32 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
     }
   };
 
+  const docFromWhs = document?.FROM_WHS || document?.FromWarehouse || detailLines[0]?.FROM_WHS || detailLines[0]?.FromWarehouse || '01';
+  const docToWhs = document?.TO_WHS || document?.ToWarehouse || detailLines[0]?.WHSCODE || detailLines[0]?.ToWarehouse || '13';
+  const isInterWhsTransfer = isTransfer && docFromWhs && docToWhs && String(docFromWhs).toUpperCase() !== String(docToWhs).toUpperCase();
+  const transferHeaderComments = document?.COMMENTS || document?.COMENTARIO || document?.Comments || '';
+
   return (
     <Modal
         title={
           <div className="sga-modal-header-container">
-            {/* Título Exacto Proyecto Original: Detalle Pedido {DOCNUM} ({CARDNAME}) */}
+            {/* Título adaptado al tipo de documento */}
             <div className="sga-modal-header-title">
-              Detalle Pedido {document.DOCNUM || document.DOCENTRY} ({document.CARDNAME || 'Sin Asignar'})
+              {isTransfer ? (
+                isInterWhsTransfer ? (
+                  <span>🔄 Traslado Entre Almacenes #{document.DOCNUM || document.DOCENTRY} (Alm. #{docFromWhs} ➔ Alm. #{docToWhs})</span>
+                ) : (
+                  <span>📦 Traslado Interno #{document.DOCNUM || document.DOCENTRY} (Almacén #{docFromWhs})</span>
+                )
+              ) : isPurchase ? (
+                <span>📥 Pedido de Compra #{document.DOCNUM || document.DOCENTRY} ({document.CARDNAME || 'Proveedor'})</span>
+              ) : isSalesReturn ? (
+                <span>📥 Devolución de Venta #{document.DOCNUM || document.DOCENTRY} ({document.CARDNAME || 'Cliente'})</span>
+              ) : isPurchaseReturn ? (
+                <span>📤 Devolución de Compra #{document.DOCNUM || document.DOCENTRY} ({document.CARDNAME || 'Proveedor'})</span>
+              ) : (
+                <span>Detalle Pedido {document.DOCNUM || document.DOCENTRY} ({document.CARDNAME || 'Sin Asignar'})</span>
+              )}
             </div>
 
             {/* Barra de Acciones del Encabezado (Num Bultos, Imp, Semi, Finalizar / Entrega Parcial, Volver) */}
@@ -486,6 +721,9 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                     min={1}
                     max={99}
                     value={bultos}
+                    controls={false}
+                    onFocus={(e) => e.target.select()}
+                    onClick={(e) => e.target.select()}
                     onChange={(v) => setBultos(v || 1)}
                     className="sga-bultos-input"
                   />
@@ -500,8 +738,8 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                 </div>
               </div>
 
-              {/* Botón Semi */}
-              {!isPurchase && !isTransfer && (
+              {/* Botón Semi (Solo para pedidos de venta estándar) */}
+              {!isPurchase && !isTransfer && !isReturn && (
                 <Button
                   type="primary"
                   icon={<CheckCircleOutlined />}
@@ -512,8 +750,8 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                 </Button>
               )}
 
-              {/* Botón Entrega Parcial (para pedidos semi-preparados o con líneas confirmadas) */}
-              {!isPurchase && !isTransfer && !isAllConfirmed && (hasPartialPrep || hasAnyConfirmed) && (
+              {/* Botón Entrega Parcial (para pedidos semi-preparados o con líneas confirmadas en venta) */}
+              {!isPurchase && !isTransfer && !isReturn && !isAllConfirmed && (hasPartialPrep || hasAnyConfirmed) && (
                 <Tooltip title="Generar albarán de entrega parcial en SAP solo con las líneas confirmadas">
                   <Button
                     type="primary"
@@ -584,11 +822,41 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
             </span>
           </div>
         )}
+
+        {/* Banner informativo de Traslado (si aplica) */}
+        {isTransfer && (
+          <div style={{
+            backgroundColor: isInterWhsTransfer ? '#fff7ed' : '#eff6ff',
+            border: `1px solid ${isInterWhsTransfer ? '#fed7aa' : '#bfdbfe'}`,
+            borderRadius: 8,
+            padding: '10px 14px',
+            marginBottom: 10,
+            fontSize: '0.85rem'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+              <div style={{ fontWeight: 800, color: isInterWhsTransfer ? '#c2410c' : '#1d4ed8' }}>
+                {isInterWhsTransfer ? (
+                  <span>🔄 Solicitud de Traslado Entre Almacenes: <Tag color="orange" style={{ margin: '0 4px', fontWeight: 800 }}>Origen: Alm. #{docFromWhs}</Tag> ➔ <Tag color="blue" style={{ margin: '0 4px', fontWeight: 800 }}>Destino: Alm. #{docToWhs}</Tag></span>
+                ) : (
+                  <span>📦 Traslado Interno dentro del mismo almacén: <Tag color="blue" style={{ margin: '0 4px', fontWeight: 800 }}>Almacén #{docFromWhs}</Tag></span>
+                )}
+              </div>
+              {transferHeaderComments && (
+                <div style={{ color: '#334155', fontWeight: 600 }}>
+                  💬 Asunto / Comentarios: <em>"{transferHeaderComments}"</em>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {/* ── CONTENEDOR DE TARJETAS DE LÍNEAS ── */}
         <div className="sga-modal-lines-scroll">
           {loadingLines ? (
             <div style={{ textAlign: 'center', padding: '60px 0' }}>
-              <Spin size="large" tip="Consultando líneas de artículo y stock disponible en SAP..." />
+              <Spin size="large" />
+              <div style={{ marginTop: 12, color: '#64748b', fontSize: '0.9rem' }}>
+                Consultando líneas de artículo y stock disponible en SAP...
+              </div>
             </div>
           ) : lineas.length === 0 ? (
             <Card style={{ textAlign: 'center', padding: '40px 0', borderRadius: 12 }}>
@@ -601,6 +869,8 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
               const isStockOk = String(line.STOCK_OK || '').toUpperCase() === 'OK';
               const defaultBin = line.BIN_STD || 'Sin Ubi';
               const whsCode = line.WHSCODE || '01';
+              const lineFromWhs = line.FROM_WHS || line.FromWarehouse || docFromWhs;
+              const lineToWhs = line.WHSCODE || line.ToWarehouse || docToWhs;
 
               // Verificar si la línea ya tiene preparación confirmada
               const ctdConfirmada = getLinePreparedQty(line, idx);
@@ -608,6 +878,12 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
               const isLineComplete = isLineFullyConfirmed(line, idx);
               const isLinePartial = isLineWithAnyPrep(line, idx) && !isLineComplete;
               const isLineConfirmed = isLineComplete || isLinePartial;
+
+              // Preparaciones previas registradas en NC_SGAWEB_DOCS para esta línea
+              const sgaPrepForLine = (lineasPreparadas || []).filter(p =>
+                String(p.U_ItemCode || '').toUpperCase() === String(line.ITEMCODE || '').toUpperCase() &&
+                (p.U_PedidoLine == null || Number(p.U_PedidoLine) === (line.LINENUM != null ? Number(line.LINENUM) : idx))
+              );
 
               let ubisList = [];
               if (Array.isArray(line.UBICACIONES)) {
@@ -620,9 +896,11 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                 }
               }
 
-              // Verificación de Escaneo de Artículo
+              // Verificación de Escaneo de Artículo (ItemCode, BarCode, U_Tipoproducto)
+              const itemVal = itemValidationStatus[idx];
               const scannedVal = (scannedItems[idx] || '').trim().toUpperCase();
-              const isItemVerified = scannedVal === (line.ITEMCODE || '').toUpperCase();
+              const isItemVerified = itemVal?.isValid === true || (scannedVal.length > 0 && scannedVal === (line.ITEMCODE || '').toUpperCase());
+              const isItemInvalid = itemVal?.isValid === false;
 
               // Opciones del selector de ubicaciones (Solo el código de ubicación limpio)
               const binOptions = ubisList.map((u) => {
@@ -659,12 +937,23 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                           {line.ITEMCODE}
                         </span>
 
-                        <span className="sga-badge-whs">
-                          <ShopOutlined style={{ marginRight: 4 }} /> Alm: {whsCode}
-                        </span>
+                        {isTransfer ? (
+                          <span className="sga-badge-whs" style={{ backgroundColor: '#fff7ed', borderColor: '#fed7aa', color: '#c2410c' }}>
+                            <ShopOutlined style={{ marginRight: 4 }} /> {lineFromWhs} ➔ {lineToWhs}
+                          </span>
+                        ) : (
+                          <span className="sga-badge-whs">
+                            <ShopOutlined style={{ marginRight: 4 }} /> Alm: {whsCode}
+                          </span>
+                        )}
 
-                        <span className="sga-badge-bin-default" title="Ubicación por defecto en SAP (Informativo)">
-                          <EnvironmentOutlined /> {defaultBin}
+                        <span
+                          className="sga-badge-bin-default"
+                          title="Haz clic para cambiar la ubicación predeterminada en SAP"
+                          onClick={() => handleOpenChangeDefaultBin(line, idx)}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          <EnvironmentOutlined /> {defaultBin} <EditOutlined style={{ fontSize: '0.7rem', marginLeft: 3, opacity: 0.8 }} />
                         </span>
                       </div>
 
@@ -673,20 +962,20 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                         <span className="sga-badge-confirmed">
                           <CheckCircleFilled style={{ fontSize: 13 }} /> Confirmada {ctdConfirmada} ud.
                         </span>
-                      ) : (isLinePartial && !isPurchase) ? (
+                      ) : (isLinePartial && !isInbound && !isReturn) ? (
                         <span style={{
-                          backgroundColor: '#fef3c7',
-                          color: '#b45309',
+                          backgroundColor: '#fffbeb',
                           border: '1px solid #fcd34d',
-                          borderRadius: 6,
-                          padding: '2px 8px',
+                          color: '#b45309',
+                          fontSize: '0.75rem',
                           fontWeight: 800,
-                          fontSize: '0.78rem',
+                          padding: '2px 8px',
+                          borderRadius: 6,
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: 4
                         }}>
-                          <CheckCircleFilled style={{ fontSize: 13, color: '#f59e0b' }} /> Semi-Prep ({ctdConfirmada}/{total} ud.)
+                          <CheckCircleOutlined style={{ fontSize: 13 }} /> Parcial: {ctdConfirmada}/{total}
                         </span>
                       ) : (
                         <span className="sga-badge-pending">
@@ -695,48 +984,43 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                       )}
                     </div>
 
-                    {/* 2. NOMBRE DEL ARTÍCULO */}
                     <div className="sga-item-title">
                       {line.ITEMNAME || 'Sin descripción'}
                     </div>
 
-                    {/* 2.1 NECESIDADES MOVIDO ABAJO */}
-
-                    {/* 3. CAJA CANTIDAD PREPARADA / TOTAL (ESTILO ORIGINAL AZUL) */}
-                    <div className="sga-qty-box">
-                      <div className="sga-qty-label">
-                        CANTIDAD PREPARADA / TOTAL
-                      </div>
-
-                      <div className="sga-qty-row">
-                        <div className="sga-qty-input-box">
-                          <InputNumber
-                            min={0}
-                            max={total}
-                            value={preparada}
-                            onChange={(val) => setPreparedQtys({ ...preparedQtys, [idx]: val || 0 })}
-                            controls={false}
-                            bordered={false}
-                            className="sga-qty-input"
-                          />
+                    {/* 3. ALERTAS DE PREPARACIÓN PARCIAL (Si existen en NC_SGAWEB_DOCS) */}
+                    {sgaPrepForLine.length > 0 && (
+                      <div className="sga-alert-sga-prep">
+                        <div className="sga-alert-sga-prep-title">
+                          <CheckCircleOutlined /> Preparaciones previas registradas:
                         </div>
-
-                        <span className="sga-qty-divider">/</span>
-
-                        <span className="sga-qty-total">
-                          {total}
-                        </span>
-
-                        <span className="sga-qty-unit">uds</span>
-
-                        <Tooltip title="Completar cantidad total">
-                          <ThunderboltOutlined
-                            onClick={() => handleAutoFillQty(idx, total)}
-                            className="sga-qty-autofill-btn"
-                          />
-                        </Tooltip>
+                        {sgaPrepForLine.map((p, pIdx) => (
+                          <div key={pIdx} className="sga-alert-sga-prep-item">
+                            <span>
+                              Lote/Doc: <strong>#{p.DocEntry}</strong> | De: <strong>{p.U_BinFrom || 'N/A'}</strong> ➜ A: <strong>{p.U_BinTo || '01-PDTE'}</strong> | Cantidad: <strong>{p.U_Quantity} ud.</strong>
+                            </span>
+                            <Popconfirm
+                              title="¿Eliminar esta preparación?"
+                              description="Se liberará el stock asignado a este pedido."
+                              onConfirm={() => handleDeleteSgaPrep(p.DocEntry)}
+                              okText="Sí, eliminar"
+                              cancelText="Cancelar"
+                              okButtonProps={{ danger: true }}
+                            >
+                              <Button
+                                size="small"
+                                danger
+                                type="link"
+                                icon={<DeleteOutlined />}
+                                style={{ padding: 0 }}
+                              >
+                                Borrar
+                              </Button>
+                            </Popconfirm>
+                          </div>
+                        ))}
                       </div>
-                    </div>
+                    )}
 
                     {/* 4. STOCK DISPONIBLE POR UBICACIÓN / SERIE */}
                     <div className="sga-stock-section">
@@ -782,9 +1066,13 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                             prefix={<BarcodeOutlined style={{ color: '#9ca3af' }} />}
                             suffix={
                               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                {isItemVerified && (
+                                {itemVal?.isChecking ? (
+                                  <Spin indicator={<LoadingOutlined style={{ fontSize: 16 }} spin />} />
+                                ) : isItemVerified ? (
                                   <CheckOutlined style={{ color: '#198754', fontWeight: 800, fontSize: 16 }} />
-                                )}
+                                ) : isItemInvalid ? (
+                                  <CloseCircleFilled style={{ color: '#ef4444', fontSize: 16 }} />
+                                ) : null}
                                 <Tooltip title="Autorellenar artículo para gestión rápida">
                                   <Button
                                     size="small"
@@ -796,19 +1084,25 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                                 </Tooltip>
                               </div>
                             }
-                            placeholder="Escanear código de barras..."
+                            placeholder="Escanear ItemCode, Código de barras o Tipo..."
                             value={scannedItems[idx] || ''}
-                            onChange={(e) => setScannedItems({ ...scannedItems, [idx]: e.target.value })}
+                            onChange={(e) => handleItemScanChange(idx, line, e.target.value)}
+                            onFocus={(e) => e.target.select()}
+                            onClick={(e) => e.target.select()}
                             size="large"
                             style={{
                               borderRadius: 8,
-                              borderColor: isItemVerified ? '#198754' : '#d9d9d9'
+                              borderColor: isItemVerified ? '#198754' : isItemInvalid ? '#ef4444' : '#d9d9d9',
+                              boxShadow: isItemVerified ? '0 0 0 2px rgba(25, 135, 84, 0.1)' : isItemInvalid ? '0 0 0 2px rgba(239, 68, 68, 0.1)' : 'none'
                             }}
                           />
                         </div>
 
                         {isItemVerified && (
                           <CheckCircleFilled style={{ color: '#198754', fontSize: 24, flexShrink: 0 }} />
+                        )}
+                        {isItemInvalid && (
+                          <CloseCircleFilled style={{ color: '#ef4444', fontSize: 24, flexShrink: 0 }} />
                         )}
 
                         <Button
@@ -818,6 +1112,11 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                           style={{ borderRadius: 8, borderColor: '#d9d9d9', flexShrink: 0 }}
                         />
                       </div>
+                      {isItemInvalid && (
+                        <div style={{ color: '#ef4444', fontSize: '0.78rem', fontWeight: 700, marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <CloseCircleFilled /> {itemVal?.errorMsg || `El código no coincide con ${line.ITEMCODE}`}
+                        </div>
+                      )}
                     </div>
 
                     {/* 6. PASO 2: Seleccionar Ubicación (Origen y Destino si es Solicitud de Traslado) */}
@@ -866,19 +1165,20 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                         </div>
                       </div>
                     ) : (
-                      <div style={{ marginBottom: 16 }}>
+                      /* Modo Solicitud de Traslado: Origen y Destino */
+                      <div style={{ marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
                         {/* 2a. Ubicación de Origen */}
-                        <div style={{ marginBottom: 12 }}>
+                        <div>
                           <div className="sga-step-title">
-                            2a. Seleccionar Ubicación Origen <span className="sga-step-required">*</span>
-                            {!isBinVerified && <span className="sga-step-tag-mandatory">Obligatorio</span>}
+                            2a. Seleccionar Ubicación Origen (Almacén #{lineFromWhs}) <span className="sga-step-required">*</span>
+                            {!currentBin && <span className="sga-step-tag-mandatory">Obligatorio</span>}
                           </div>
                           <div className="sga-step-row">
                             <div className="sga-step-input-wrap">
                               <Select
                                 showSearch
                                 allowClear
-                                placeholder={binOptions.length > 0 ? 'Selecciona ubicación origen...' : 'Escribe ubicación origen...'}
+                                placeholder={binOptions.length > 0 ? `Selecciona ubicación origen (Alm. #${lineFromWhs})...` : `Escribe ubicación origen (Alm. #${lineFromWhs})...`}
                                 value={currentBin || undefined}
                                 onChange={(val) => setSelectedBins({ ...selectedBins, [idx]: val || null })}
                                 size="large"
@@ -889,7 +1189,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                                 }
                                 notFoundContent={
                                   <span style={{ color: '#6b7280', fontSize: '0.82rem' }}>
-                                    No hay ubicaciones con stock. Puedes escribir el código manualmente.
+                                    No hay ubicaciones con stock en Alm. #{lineFromWhs}. Puedes escribir el código manualmente.
                                   </span>
                                 }
                               />
@@ -910,26 +1210,33 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                         {/* 2b. Ubicación de Destino */}
                         <div>
                           <div className="sga-step-title">
-                            2b. Seleccionar Ubicación Destino <span className="sga-step-required">*</span>
+                            2b. Seleccionar Ubicación Destino (Almacén #{lineToWhs}) <span className="sga-step-required">*</span>
                             {!selectedBinsTo[idx] && <span className="sga-step-tag-mandatory">Obligatorio</span>}
                           </div>
                           <div className="sga-step-row">
                             <div className="sga-step-input-wrap">
                               <Input
-                                prefix={<EnvironmentOutlined style={{ color: '#0d6efd' }} />}
-                                placeholder="Escanear o escribir ubicación destino..."
+                                prefix={<EnvironmentOutlined style={{ color: binToValidationStatus[idx]?.isValid ? '#198754' : binToValidationStatus[idx]?.isValid === false ? '#ef4444' : '#0d6efd' }} />}
+                                suffix={
+                                  binToValidationStatus[idx]?.isChecking ? (
+                                    <Spin indicator={<LoadingOutlined style={{ fontSize: 16 }} spin />} />
+                                  ) : binToValidationStatus[idx]?.isValid ? (
+                                    <CheckCircleFilled style={{ color: '#198754', fontSize: 18 }} />
+                                  ) : binToValidationStatus[idx]?.isValid === false ? (
+                                    <CloseCircleFilled style={{ color: '#ef4444', fontSize: 18 }} />
+                                  ) : null
+                                }
+                                placeholder={`Escanear o escribir ubicación destino en Alm. #${lineToWhs}...`}
                                 value={selectedBinsTo[idx] || ''}
-                                onChange={(e) => setSelectedBinsTo({ ...selectedBinsTo, [idx]: e.target.value.toUpperCase() })}
+                                onChange={(e) => handleBinToChange(idx, e.target.value, lineToWhs)}
                                 size="large"
                                 style={{
                                   borderRadius: 8,
-                                  borderColor: selectedBinsTo[idx] ? '#198754' : '#d9d9d9'
+                                  borderColor: binToValidationStatus[idx]?.isValid ? '#198754' : binToValidationStatus[idx]?.isValid === false ? '#ef4444' : selectedBinsTo[idx] ? '#198754' : '#d9d9d9',
+                                  boxShadow: binToValidationStatus[idx]?.isValid ? '0 0 0 2px rgba(25, 135, 84, 0.1)' : binToValidationStatus[idx]?.isValid === false ? '0 0 0 2px rgba(239, 68, 68, 0.1)' : 'none'
                                 }}
                               />
                             </div>
-                            {selectedBinsTo[idx] && (
-                              <CheckCircleFilled style={{ color: '#198754', fontSize: 24, flexShrink: 0 }} />
-                            )}
                             <Button
                               icon={<PrinterOutlined />}
                               onClick={() => handlePrintBinLabel(selectedBinsTo[idx])}
@@ -938,6 +1245,11 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                               style={{ borderRadius: 8, borderColor: '#d9d9d9', flexShrink: 0 }}
                             />
                           </div>
+                          {binToValidationStatus[idx]?.isValid === false && (
+                            <div style={{ color: '#ef4444', fontWeight: 700, fontSize: '0.78rem', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <CloseCircleFilled /> {binToValidationStatus[idx]?.errorMsg}
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
@@ -950,41 +1262,113 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                           items={[{
                             key: '1',
                             label: (
-                              <span style={{ fontWeight: 600, color: '#4b5563' }}>
-                                <BulbOutlined /> Necesidades ({line.NECESIDADES.length})
+                              <span style={{ fontWeight: 700, color: '#334155', fontSize: '0.88rem' }}>
+                                <BulbOutlined style={{ color: '#0d6efd', marginRight: 6 }} /> Necesidades ({line.NECESIDADES.length})
                               </span>
                             ),
                             children: (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                                 {line.NECESIDADES.map((nec, nIdx) => {
                                   const isTraslado = nec.OBJTYPE === '1250000001' || nec.TIPO === 'Solicitud de Traslado';
-                                  const isVenta = nec.OBJTYPE === '17' || nec.TIPO === 'Pedido de Venta';
+                                  const isLlamada = (nec.LLAMADA && parseInt(nec.LLAMADA) > 0) || nec.TIPO === 'Llamada' || nec.OBJTYPE === 'LLAMADA' || nec.OBJTYPE === '191';
                                   const docNum = nec.DOCNUM || nec.DocNum || nec.DOCENTRY || nec.LLAMADA || (nIdx + 1);
                                   const fromWhs = nec.FROM_WHS || nec.FromWarehouse || '01';
                                   const toWhs = nec.TO_WHS || nec.ToWarehouse || '13';
                                   const cliente = nec.CARDNAME || nec.CardName || (isTraslado ? `Traslado Alm. ${fromWhs} ➔ Alm. ${toWhs}` : '');
                                   const observaciones = nec.COMENTARIO || nec.Comments || nec.COMENTARIO_LLAMADA || '';
+                                  const cantVal = Number(nec.QTY ?? nec.CANTIDAD ?? nec.QUANTITY ?? 0);
+                                  const compVal = Number(nec.COMPROMETIDO ?? nec.COMMITTED ?? nec.Committed ?? cantVal);
+                                  const rawDate = nec.DOCDATE || nec.DocDate || nec.FECHA || nec.TaxDate || '';
+                                  const fecha = rawDate ? String(rawDate).split('T')[0] : '';
+                                  const llamadaNum = nec.LLAMADA || (isLlamada ? docNum : null);
+                                  const llamadaEstado = nec.ESTADO_LLAMADA || nec.STATUS || nec.U_Estado || nec.ASUNTO_LLAMADA || '';
+                                  const titlePrefix = isTraslado ? 'Traslado' : isLlamada ? 'Llamada' : 'Pedido';
 
                                   return (
-                                    <div key={nIdx} className="sga-nec-item">
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                                        <span style={{ fontWeight: 700, color: isTraslado ? '#d97706' : isVenta ? '#2563eb' : '#b45309' }}>
-                                          📄 {nec.TIPO || 'Reserva'} Nº {docNum}
+                                    <div
+                                      key={nIdx}
+                                      style={{
+                                        backgroundColor: '#ffffff',
+                                        border: '1px solid #e2e8f0',
+                                        borderRadius: 10,
+                                        padding: '12px 14px',
+                                        boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                                      }}
+                                    >
+                                      {/* Fila 1: Título y Badges */}
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                        <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#1e293b' }}>
+                                          {titlePrefix} {docNum}
                                         </span>
-                                        {nec.QTY > 0 && <Tag color="purple" style={{ margin: 0, fontSize: '0.72rem' }}>{nec.QTY} u.</Tag>}
+                                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                          <span style={{
+                                            backgroundColor: '#475569',
+                                            color: '#ffffff',
+                                            fontWeight: 700,
+                                            fontSize: '0.75rem',
+                                            padding: '2px 8px',
+                                            borderRadius: 6
+                                          }}>
+                                            Cant: {cantVal.toFixed(1)}
+                                          </span>
+                                          <span style={{
+                                            backgroundColor: '#f59e0b',
+                                            color: '#000000',
+                                            fontWeight: 800,
+                                            fontSize: '0.75rem',
+                                            padding: '2px 8px',
+                                            borderRadius: 6,
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: 4
+                                          }}>
+                                            <LockFilled style={{ fontSize: '0.7rem' }} /> Comp: {compVal.toFixed(1)}
+                                          </span>
+                                        </div>
                                       </div>
 
-                                      {cliente && (
-                                        <div className="sga-nec-client">
-                                          <span style={{ color: '#64748b', marginRight: 4 }}>🏢 Cliente:</span>
-                                          <strong>{cliente}</strong>
+                                      {/* Fila 2: Fecha */}
+                                      {fecha && (
+                                        <div style={{ fontSize: '0.82rem', color: '#475569', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                          <span>📅</span>
+                                          <span>Fecha: <strong style={{ color: '#1e293b' }}>{fecha}</strong></span>
                                         </div>
                                       )}
 
+                                      {/* Fila 3: Llamada */}
+                                      {llamadaNum && (
+                                        <div style={{ fontSize: '0.82rem', color: '#475569', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                          <span>⚙️</span>
+                                          <span>Llamada: <strong style={{ color: '#1e293b' }}>{llamadaNum}{llamadaEstado ? ` (${llamadaEstado})` : ''}</strong></span>
+                                        </div>
+                                      )}
+
+                                      {/* Fila 4: Cliente */}
+                                      {cliente && (
+                                        <div style={{ fontSize: '0.82rem', color: '#475569', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                          <span>🏢</span>
+                                          <span>Cliente: <strong style={{ color: '#1e293b' }}>{cliente}</strong></span>
+                                        </div>
+                                      )}
+
+                                      {/* Fila 5: Observaciones */}
                                       {observaciones && observaciones !== '-' && (
-                                        <div className="sga-nec-comments">
-                                          <span style={{ color: '#64748b', fontWeight: 600, marginRight: 4 }}>💬 Observaciones:</span>
-                                          <span style={{ color: '#334155' }}>{observaciones}</span>
+                                        <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #f1f5f9' }}>
+                                          <div style={{ color: '#0284c7', fontSize: '0.82rem', fontWeight: 800, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            <MessageOutlined style={{ color: '#0284c7' }} /> Observaciones:
+                                          </div>
+                                          <div style={{
+                                            backgroundColor: '#f8fafc',
+                                            border: '1px solid #e2e8f0',
+                                            borderRadius: 8,
+                                            padding: '10px 12px',
+                                            color: '#1e293b',
+                                            fontSize: '0.82rem',
+                                            lineHeight: 1.5,
+                                            whiteSpace: 'pre-line'
+                                          }}>
+                                            {observaciones}
+                                          </div>
                                         </div>
                                       )}
                                     </div>
@@ -1034,6 +1418,18 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
           primaryAvailable={multiBinModal.primaryAvailable}
           allBinsWithStock={multiBinModal.allBinsWithStock}
           onConfirm={handleMultiBinConfirm}
+        />
+
+        {/* Modal para cambiar la ubicación predeterminada en SAP */}
+        <ChangeDefaultBinModal
+          open={changeBinModal.open}
+          itemCode={changeBinModal.itemCode}
+          itemName={changeBinModal.itemName}
+          whsCode={changeBinModal.whsCode}
+          currentBin={changeBinModal.currentBin}
+          ubisList={changeBinModal.ubisList}
+          onClose={() => setChangeBinModal(prev => ({ ...prev, open: false }))}
+          onSuccess={handleDefaultBinSuccess}
         />
       </Modal>
   );

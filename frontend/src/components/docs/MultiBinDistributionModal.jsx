@@ -260,6 +260,8 @@ export const MultiBinDistributionModal = ({
                             max={b.onhandqty}
                             step={1}
                             value={currentVal}
+                            onFocus={(e) => e.target.select()}
+                            onClick={(e) => e.target.select()}
                             onChange={(val) => handleQtyChange(b.bincode, val)}
                             size="large"
                             style={{

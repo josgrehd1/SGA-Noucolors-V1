@@ -41,13 +41,6 @@ export const Navbar = ({ onToggleSidebar, onOpenPrinterModal }) => {
     ]
   };
 
-  const operacionesMenu = {
-    items: [
-      { key: 'inventario', label: 'Inventario', onClick: () => navigate('/inventario') },
-      { key: 'inv-ciego', label: 'Inv. Ciego', onClick: () => navigate('/inventario', { state: { ciego: true } }) }
-    ]
-  };
-
   const stockMenu = {
     items: [
       { key: 'consulta-stock', label: 'Consulta Stock', onClick: () => navigate('/stock') },
@@ -127,11 +120,13 @@ export const Navbar = ({ onToggleSidebar, onOpenPrinterModal }) => {
                   </Button>
                 </Dropdown>
 
-                <Dropdown menu={operacionesMenu} trigger={['hover']}>
-                  <Button type="text" className="sga-nav-dropdown-btn">
-                    Operaciones <DownOutlined style={{ fontSize: '0.7rem' }} />
-                  </Button>
-                </Dropdown>
+                <Button
+                  type="text"
+                  className="sga-nav-dropdown-btn"
+                  onClick={() => navigate('/inventario')}
+                >
+                  Inventario
+                </Button>
 
                 <Dropdown menu={stockMenu} trigger={['hover']}>
                   <Button type="text" className="sga-nav-dropdown-btn">

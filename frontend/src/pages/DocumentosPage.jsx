@@ -20,12 +20,6 @@ const TIPOS_VENTA_OPTIONS = [
   { label: 'Otros', value: 'Otros' }
 ];
 
-const ESTADO_PREPARACION_OPTIONS = [
-  { label: 'Todos los estados', value: '' },
-  { label: '🟠 En Preparación / Semi-preparados', value: 'en_preparacion' },
-  { label: '⚪ Sin Iniciar', value: 'sin_iniciar' }
-];
-
 export const DocumentosPage = () => {
   const { socket } = useSocket();
   const location = useLocation();
@@ -42,8 +36,7 @@ export const DocumentosPage = () => {
   const [filters, setFilters] = useState({
     cliente: '',
     search_docnum: '',
-    tipo_venta: '',
-    estado_preparacion: ''
+    tipo_venta: ''
   });
 
   const [selectedDetailDoc, setSelectedDetailDoc] = useState(null);
@@ -57,17 +50,15 @@ export const DocumentosPage = () => {
     setFilters({
       cliente: '',
       search_docnum: '',
-      tipo_venta: '',
-      estado_preparacion: ''
+      tipo_venta: ''
     });
     setPage(1);
     fetchDocuments(nextObjType);
   }, [location.state?.objType, location.state?.verInactivos, location.key]);
 
   // Petición principal a SAP
-  const fetchDocuments = async (targetObjType) => {
-    const currentObjType = targetObjType || objType || '17';
-    setLoading(true);
+  const fetchDocuments = async (currentObjType, isSilent = false) => {
+    if (!isSilent) setLoading(true);
     try {
       const isVerInactivos = Boolean(location.state?.verInactivos);
       const params = {
@@ -81,18 +72,20 @@ export const DocumentosPage = () => {
       if (res.status === 'ok') {
         const fetched = res.pedidos || [];
         setRawDocuments(fetched);
-      } else {
+      } else if (!isSilent) {
         message.error(res.message || 'Error cargando documentos');
       }
     } catch (err) {
       console.error('Error consultando pedidos en SAP:', err);
-      message.error(err.message || 'Error consultando pedidos en SAP SQL Server');
+      if (!isSilent) {
+        message.error(err.message || 'Error consultando pedidos en SAP SQL Server');
+      }
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   };
 
-  // Suscripción a WebSockets en tiempo real
+  // Suscripción a WebSockets en tiempo real (100% silenciosa en segundo plano)
   useEffect(() => {
     if (!socket) return;
 
@@ -101,10 +94,7 @@ export const DocumentosPage = () => {
       if (selectedDetailDoc || selectedSemiPrepareDoc) {
         return;
       }
-      if (data?.type === 'sap_new_order') {
-        message.info('🔄 Actualización detectada en SAP: Sincronizando pedidos...');
-      }
-      fetchDocuments(objType);
+      fetchDocuments(objType, true);
     };
 
     socket.on('sap_update', handleSapUpdate);
@@ -126,8 +116,7 @@ export const DocumentosPage = () => {
     setFilters({
       cliente: '',
       search_docnum: '',
-      tipo_venta: '',
-      estado_preparacion: ''
+      tipo_venta: ''
     });
     setPage(1);
   };
@@ -139,9 +128,8 @@ export const DocumentosPage = () => {
     const clientTerm = (filters.cliente || '').trim().toLowerCase();
     const docnumTerm = (filters.search_docnum || '').replace('#', '').trim().toLowerCase();
     const tipoTerm = (filters.tipo_venta || '').trim().toLowerCase();
-    const estadoPrepTerm = filters.estado_preparacion || '';
 
-    if (!clientTerm && !docnumTerm && !tipoTerm && !estadoPrepTerm) {
+    if (!clientTerm && !docnumTerm && !tipoTerm) {
       return rawDocuments;
     }
 
@@ -150,24 +138,12 @@ export const DocumentosPage = () => {
       const cardNameStr = String(doc.CARDNAME ?? doc.CardName ?? '').toLowerCase();
       const cardCodeStr = String(doc.CARDCODE ?? doc.CardCode ?? '').toLowerCase();
       const tipoStr = String(doc.TIPOVENTA ?? doc.TipoVenta ?? '').toLowerCase();
-      const totalLineas = doc.LINEAS?.length || (doc.DocumentLines?.length || 0);
-      const gestionadas = Number(doc.CUENTA_PREPARADO) || 0;
-      const isPurchase = String(doc.OBJTYPE || doc.ObjType) === '22';
-      const isTransfer = String(doc.OBJTYPE || doc.ObjType) === '1250000001' || String(doc.OBJTYPE || doc.ObjType) === '67';
-      const isSemiPropio = !isPurchase && !isTransfer && (
-        Boolean(doc.IS_SEMI_PREPARADO) ||
-        (doc.SGA_PREPARADAS && doc.SGA_PREPARADAS.length > 0) ||
-        (gestionadas > 0 && gestionadas < totalLineas)
-      );
 
       const matchDocnum = !docnumTerm || docNumStr.includes(docnumTerm);
       const matchClient = !clientTerm || cardNameStr.includes(clientTerm) || cardCodeStr.includes(clientTerm);
       const matchTipo = !tipoTerm || tipoStr.includes(tipoTerm);
-      const matchEstado = !estadoPrepTerm ||
-        (estadoPrepTerm === 'en_preparacion' && (isSemiPropio || doc.IS_SEMI_PREPARADO || gestionadas > 0)) ||
-        (estadoPrepTerm === 'sin_iniciar' && !isSemiPropio && !doc.IS_SEMI_PREPARADO && gestionadas === 0);
 
-      return matchDocnum && matchClient && matchTipo && matchEstado;
+      return matchDocnum && matchClient && matchTipo;
     });
   }, [rawDocuments, filters]);
 
@@ -239,7 +215,7 @@ export const DocumentosPage = () => {
   };
 
   const hasActiveFilters = Boolean(
-    filters.cliente || filters.search_docnum || filters.tipo_venta || filters.estado_preparacion
+    filters.cliente || filters.search_docnum || filters.tipo_venta
   );
 
   return (
@@ -261,7 +237,7 @@ export const DocumentosPage = () => {
       <div className="sga-filter-panel">
         <Row gutter={[12, 12]} align="top">
           {/* Cliente Descripción con Sugerencias Instantáneas */}
-          <Col xs={24} sm={12} md={5}>
+          <Col xs={24} sm={12} md={8}>
             <label className="sga-filter-label">
               Cliente Descripción
             </label>
@@ -271,7 +247,6 @@ export const DocumentosPage = () => {
               onChange={(val) => handleFilterChange('cliente', val || '')}
               onSelect={(val) => handleFilterChange('cliente', val || '')}
               style={{ width: '100%' }}
-              size="large"
             >
               <Input
                 placeholder="Filtrar cliente o código..."
@@ -283,7 +258,7 @@ export const DocumentosPage = () => {
           </Col>
 
           {/* Num Documento con Sugerencias Instantáneas */}
-          <Col xs={24} sm={12} md={4}>
+          <Col xs={24} sm={12} md={6}>
             <label className="sga-filter-label">
               Num Documento
             </label>
@@ -293,7 +268,6 @@ export const DocumentosPage = () => {
               onChange={(val) => handleFilterChange('search_docnum', val || '')}
               onSelect={(val) => handleFilterChange('search_docnum', val || '')}
               style={{ width: '100%' }}
-              size="large"
             >
               <Input
                 placeholder="Ej: 1024..."
@@ -305,7 +279,7 @@ export const DocumentosPage = () => {
           </Col>
 
           {/* Tipo Venta */}
-          <Col xs={24} sm={12} md={5}>
+          <Col xs={24} sm={12} md={6}>
             <label className="sga-filter-label">
               Tipo Venta
             </label>
@@ -319,23 +293,8 @@ export const DocumentosPage = () => {
             />
           </Col>
 
-          {/* Estado Preparación */}
-          <Col xs={24} sm={12} md={5}>
-            <label className="sga-filter-label">
-              Estado Preparación
-            </label>
-            <Select
-              name="estado_preparacion"
-              value={filters.estado_preparacion}
-              onChange={(val) => handleFilterChange('estado_preparacion', val)}
-              size="large"
-              style={{ width: '100%', borderRadius: 8 }}
-              options={ESTADO_PREPARACION_OPTIONS}
-            />
-          </Col>
-
           {/* Botón Limpiar */}
-          <Col xs={24} sm={24} md={5}>
+          <Col xs={24} sm={12} md={4}>
             <div className="sga-filter-label-spacer" />
             <Button
               icon={<ClearOutlined />}
@@ -396,6 +355,16 @@ export const DocumentosPage = () => {
                 <strong>🟡 Amarillo:</strong> Semi-Preparado
               </span>
             </div>
+
+            {/* Violeta - En Zona de Preparación (Solo en Pedidos de Venta) */}
+            {String(objType) === '17' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ width: 14, height: 14, borderRadius: 4, backgroundColor: '#7c3aed', boxShadow: '0 0 0 2px #c4b5fd' }} />
+                <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b' }}>
+                  <strong>🟣 Violeta:</strong> En Zona de Preparación
+                </span>
+              </div>
+            )}
 
             {/* Turquesa - Preparado Completo */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

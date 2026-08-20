@@ -102,11 +102,16 @@ class AuthService:
     @staticmethod
     def get_current_user():
         if 'sap_username' in session or 'sap_user' in session:
+            nivel = str(session.get('sap_nivel') or 'A').strip().upper()
+            username = session.get('sap_username') or session.get('sap_user')
+            is_super = nivel == 'S' or str(session.get('sap_user', '')).lower() == 'manager'
             return {
-                'username': session.get('sap_username') or session.get('sap_user'),
+                'username': username,
                 'company_db': session.get('company_db'),
                 'employee_id': session.get('sap_employee_id', 0),
-                'printer': session.get('impresora', '')
+                'printer': session.get('impresora', ''),
+                'nivel': nivel,
+                'is_super': is_super
             }
         return None
 

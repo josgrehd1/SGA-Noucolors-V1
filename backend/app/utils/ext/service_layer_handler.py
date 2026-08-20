@@ -1,10 +1,13 @@
-# pyrefly: ignore [missing-import]
-from werkzeug._internal import _log
+import logging
 from flask import current_app, jsonify, session
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import socket
+
+logger = logging.getLogger('ServiceLayerHandler')
+log = logger
+_log = logger
 
 class ServiceLayerHandler:
     def __init__(self):

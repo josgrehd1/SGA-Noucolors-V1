@@ -2,11 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Modal, Typography, Button, Spin, message } from 'antd';
 import { PrinterOutlined, FilePdfOutlined } from '@ant-design/icons';
 import client from '../../utils/client';
+import { useAuth } from '../../context/AuthContext';
 import { AlbaranDocumentReport } from './AlbaranDocumentReport';
 
 const { Title, Text } = Typography;
 
 export const AlbaranDetailModal = ({ docEntry, open, onClose }) => {
+  const { activePdfPrinter } = useAuth();
   const [albaran, setAlbaran] = useState(null);
   const [loading, setLoading] = useState(false);
   const [printingServer, setPrintingServer] = useState(false);
@@ -331,14 +333,17 @@ export const AlbaranDetailModal = ({ docEntry, open, onClose }) => {
     }, 300);
   };
 
-  // Impresión en servidor físico (SumatraPDF)
+  // Impresión de Albarán por Socket IP / Red
   const handlePrintServer = async () => {
     if (!docEntry) return;
     setPrintingServer(true);
     try {
-      const res = await client.post(`/albaranes/${docEntry}/imprimir`);
+      const res = await client.post(`/albaranes/${docEntry}/imprimir`, {
+        printer_ip: activePdfPrinter || undefined,
+        copies: 2
+      });
       if (res.status === 'ok') {
-        message.success(res.message || 'Albarán enviado a la impresora del servidor');
+        message.success(res.message || 'Albarán enviado a la impresora de red');
       } else {
         message.error(res.message || 'Error imprimiendo albarán');
       }
@@ -378,7 +383,7 @@ export const AlbaranDetailModal = ({ docEntry, open, onClose }) => {
           onClick={handlePrintBrowser}
           style={{ backgroundColor: '#1d2433', borderColor: '#1d2433', borderRadius: 6, fontWeight: 600 }}
         >
-          Imprimir / Guardar PDF
+          Guardar PDF
         </Button>,
         <Button
           key="print_server"
@@ -387,7 +392,7 @@ export const AlbaranDetailModal = ({ docEntry, open, onClose }) => {
           onClick={handlePrintServer}
           style={{ borderRadius: 6 }}
         >
-          Imprimir en Servidor
+          Imprimir
         </Button>
       ]}
     >

@@ -1,6 +1,34 @@
 {
-    "Impresora Zebra Akua": {"IP": "192.168.1.33", "Size": "100X50", "IPPDF": "192.168.1.249", "NOMIMPPDF": "ImpresoraAkua"},
-    "Impresora Zebra Recambios": {"IP": "192.168.1.26", "Size": "80X30", "IPPDF": "192.168.1.223", "NOMIMPPDF": "ImpresoraRecambios"},
-    "Impresora Zebra Valencia": {"IP": "192.168.101.4", "Size": "80X30", "IPPDF": "192.168.101.2", "NOMIMPPDF": "ImpresoraValencia"},
-    "Impresora Sergio": {"IP": "192.168.1.26", "Size": "80X30", "IPPDF": "192.168.1.241", "NOMIMPPDF": "ImpresoraSergio"}
+    "etiquetas": {
+        "Zebra Akua": {
+            "ip": "192.168.1.33",
+            "size": "100X50"
+        },
+        "Zebra Recambios": {
+            "ip": "192.168.1.26",
+            "size": "80X30"
+        },
+        "Zebra Valencia": {
+            "ip": "192.168.101.4",
+            "size": "80X30"
+        }
+    },
+    "albaranes": {
+        "Albaranes Akua": {
+            "ip": "192.168.1.249",
+            "impresora_windows": "ImpresoraAkua"
+        },
+        "Albaranes Recambios": {
+            "ip": "192.168.1.223",
+            "impresora_windows": "ImpresoraRecambios"
+        },
+        "Albaranes Valencia": {
+            "ip": "192.168.101.2",
+            "impresora_windows": "ImpresoraValencia"
+        },
+        "Albaranes Prueba": {
+            "ip": "192.168.1.224",
+            "impresora_windows": "Brother MFC-J5330DW Printer"
+        }
+    }
 }

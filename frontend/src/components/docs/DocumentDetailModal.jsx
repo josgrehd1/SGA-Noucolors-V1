@@ -83,6 +83,17 @@ const getBinQty = (u) => {
   return u.onhandqty ?? u.BINQTY ?? u.SNQTY ?? u.on_hand_qty ?? u.qty ?? u.count ?? u.Cantidad ?? 0;
 };
 
+// Helper para ordenar líneas de forma 100% determinista y estable (evita saltos visuales o intercambios)
+const sortDocLines = (lines) => {
+  if (!Array.isArray(lines)) return [];
+  return [...lines].sort((a, b) => {
+    const lineA = Number(a.LINENUM ?? a.LINE_NUM ?? a.LineNum ?? 0);
+    const lineB = Number(b.LINENUM ?? b.LINE_NUM ?? b.LineNum ?? 0);
+    if (lineA !== lineB) return lineA - lineB;
+    return String(a.ITEMCODE || a.ItemCode || '').localeCompare(String(b.ITEMCODE || b.ItemCode || ''));
+  });
+};
+
 export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpenSemiPrepare }) => {
   const [bultos, setBultos] = useState(1);
   const [printingBultos, setPrintingBultos] = useState(false);
@@ -145,7 +156,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
     }
   }, [open]);
 
-  // Carga inmediata y sincronización de líneas de detalle del pedido
+  // Carga inmediata y sincronización de líneas de detalle del pedido con orden estable
   useEffect(() => {
     if (open && document) {
       const docEntry = document.DOCENTRY || document.DocEntry || document.DOCNUM;
@@ -153,9 +164,9 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
         ? document.LINEAS
         : (Array.isArray(document.DocumentLines) && document.DocumentLines.length > 0 ? document.DocumentLines : []);
 
-      const initialLines = rawInitial.map(normalizeLine);
+      const initialLines = sortDocLines(rawInitial.map(normalizeLine));
 
-      // 1. Mostrar líneas de inmediato desde la memoria
+      // 1. Mostrar líneas de inmediato desde la memoria con orden fijo
       setDetailLines(initialLines);
 
       const initialQtys = {};
@@ -164,7 +175,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
       const initialBinsTo = {};
 
       initialLines.forEach((line, idx) => {
-        initialQtys[idx] = (line.CTD_PREPARADA && line.CTD_PREPARADA > 0) ? line.CTD_PREPARADA : 0;
+        initialQtys[idx] = (line.CTD_PREPARADA && line.CTD_PREPARADA > 0) ? Math.round(line.CTD_PREPARADA) : 0;
         if (line.BIN_DESTINO || line.U_BinTo) {
           initialBinsTo[idx] = line.BIN_DESTINO || line.U_BinTo;
         }
@@ -188,7 +199,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
             if (resDetalle && resDetalle.status === 'ok') {
               const raw = resDetalle.info || resDetalle.lineas || [];
               if (raw.length > 0) {
-                loaded = raw.map(normalizeLine);
+                loaded = sortDocLines(raw.map(normalizeLine));
                 setDetailLines(loaded);
               }
             }
@@ -200,41 +211,73 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
             setLineasPreparadas(prepList);
 
             if (prepList.length > 0 || loaded.length > 0) {
-              const updatedQtys = {};
-              const updatedScanned = {};
-              const updatedBins = {};
-              const updatedBinsTo = {};
+              setPreparedQtys(prev => {
+                const next = { ...prev };
+                loaded.forEach((line, idx) => {
+                  const lineNum = line.LINENUM ?? line.LINE_NUM ?? idx;
+                  const itemCode = (line.ITEMCODE || '').trim().toUpperCase();
 
-              loaded.forEach((line, idx) => {
-                const lineNum = line.LINENUM ?? line.LINE_NUM ?? idx;
-                const itemCode = (line.ITEMCODE || '').trim().toUpperCase();
+                  const prep = prepList.find(lp => {
+                    const lpLine = lp.U_PedidoLine;
+                    const lpItem = (lp.U_ItemCode || '').trim().toUpperCase();
+                    return (
+                      (String(lpLine) === String(lineNum) || String(lpLine) === String(idx)) &&
+                      (lpItem === itemCode || !lpItem)
+                    ) || (lpItem === itemCode && lpItem !== '');
+                  });
 
-                const prep = prepList.find(lp => {
-                  const lpLine = lp.U_PedidoLine;
-                  const lpItem = (lp.U_ItemCode || '').trim().toUpperCase();
-                  return (
-                    (String(lpLine) === String(lineNum) || String(lpLine) === String(idx)) &&
-                    (lpItem === itemCode || !lpItem)
-                  ) || (lpItem === itemCode && lpItem !== '');
-                });
-
-                if (prep) {
-                  updatedQtys[idx] = prep.U_Quantity ?? line.CTD_PREPARADA ?? 0;
-                  updatedScanned[idx] = line.ITEMCODE || '';
-                  updatedBins[idx] = prep.U_BinFrom || '';
-                  updatedBinsTo[idx] = prep.U_BinTo || '';
-                } else {
-                  updatedQtys[idx] = (line.CTD_PREPARADA && line.CTD_PREPARADA > 0) ? line.CTD_PREPARADA : 0;
-                  if (line.BIN_DESTINO || line.U_BinTo) {
-                    updatedBinsTo[idx] = line.BIN_DESTINO || line.U_BinTo;
+                  if (prep) {
+                    next[idx] = Math.round(prep.U_Quantity ?? line.CTD_PREPARADA ?? 0);
+                  } else if (next[idx] === undefined) {
+                    next[idx] = (line.CTD_PREPARADA && line.CTD_PREPARADA > 0) ? Math.round(line.CTD_PREPARADA) : 0;
                   }
-                }
+                });
+                return next;
               });
 
-              setPreparedQtys(updatedQtys);
-              setScannedItems(updatedScanned);
-              setSelectedBins(updatedBins);
-              setSelectedBinsTo(updatedBinsTo);
+              setScannedItems(prev => {
+                const next = { ...prev };
+                loaded.forEach((line, idx) => {
+                  if (!next[idx]) {
+                    const lineNum = line.LINENUM ?? line.LINE_NUM ?? idx;
+                    const itemCode = (line.ITEMCODE || '').trim().toUpperCase();
+                    const prep = prepList.find(lp => {
+                      const lpLine = lp.U_PedidoLine;
+                      const lpItem = (lp.U_ItemCode || '').trim().toUpperCase();
+                      return (
+                        (String(lpLine) === String(lineNum) || String(lpLine) === String(idx)) &&
+                        (lpItem === itemCode || !lpItem)
+                      ) || (lpItem === itemCode && lpItem !== '');
+                    });
+                    if (prep) {
+                      next[idx] = line.ITEMCODE || '';
+                    }
+                  }
+                });
+                return next;
+              });
+
+              setSelectedBins(prev => {
+                const next = { ...prev };
+                loaded.forEach((line, idx) => {
+                  if (!next[idx]) {
+                    const lineNum = line.LINENUM ?? line.LINE_NUM ?? idx;
+                    const itemCode = (line.ITEMCODE || '').trim().toUpperCase();
+                    const prep = prepList.find(lp => {
+                      const lpLine = lp.U_PedidoLine;
+                      const lpItem = (lp.U_ItemCode || '').trim().toUpperCase();
+                      return (
+                        (String(lpLine) === String(lineNum) || String(lpLine) === String(idx)) &&
+                        (lpItem === itemCode || !lpItem)
+                      ) || (lpItem === itemCode && lpItem !== '');
+                    });
+                    if (prep && prep.U_BinFrom) {
+                      next[idx] = prep.U_BinFrom;
+                    }
+                  }
+                });
+                return next;
+              });
             }
           })
           .catch((err) => {
@@ -297,10 +340,7 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
 
   const isAllConfirmed = lineas.length > 0 && lineas.every((line, idx) => isLineFullyConfirmed(line, idx));
   const hasPartialPrep = lineas.some((line, idx) => isLineWithAnyPrep(line, idx)) && !isAllConfirmed;
-  const hasAnyConfirmed = lineas.some((line, idx) => {
-    const q = preparedQtys[idx] ?? 0;
-    return q > 0 || lineasPreparadas.some(lp => String(lp.U_PedidoLine) === String(line.LINENUM ?? idx) && Number(lp.U_Quantity) > 0);
-  });
+  const hasAnyConfirmed = lineas.some((line, idx) => isLineWithAnyPrep(line, idx) || isLineFullyConfirmed(line, idx));
 
   const handlePrintBultos = async () => {
     setPrintingBultos(true);
@@ -620,6 +660,42 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
       }
     } catch (err) {
       message.error(err.message || 'Error al guardar confirmación de línea');
+    }
+  };
+
+  const handleCancelLinePrep = async (idx, line) => {
+    try {
+      const docEntry = document.DOCENTRY || document.DocEntry || document.DOCNUM;
+      const lineNum = line.LINENUM ?? line.LINE_NUM ?? idx;
+      
+      const payload = {
+        docentry: docEntry,
+        linenum: lineNum,
+        itemcode: line.ITEMCODE
+      };
+
+      // 1. Actualizar el estado local de React inmediatamente (UI 100% reactiva y en tiempo real)
+      setLineasPreparadas(prev => prev.filter(lp =>
+        !(String(lp.U_PedidoLine) === String(lineNum) &&
+          (lp.U_ItemCode || '').toUpperCase() === (line.ITEMCODE || '').toUpperCase())
+      ));
+      setDetailLines(prev => prev.map((l, i) => i === idx ? { ...l, CTD_PREPARADA: 0 } : l));
+      setPreparedQtys(prev => ({ ...prev, [idx]: 0 }));
+      setScannedItems(prev => ({ ...prev, [idx]: '' }));
+      setSelectedBins(prev => ({ ...prev, [idx]: null }));
+      setItemValidationStatus(prev => ({ ...prev, [idx]: null }));
+      setBinToValidationStatus(prev => ({ ...prev, [idx]: null }));
+      hasChangesRef.current = true;
+
+      // 2. Comunicar con el servidor en segundo plano
+      const res = await client.post('/docs/cancelar-linea', payload);
+      if (res.status === 'ok') {
+        message.success(res.message || `Confirmación de línea ${line.ITEMCODE} cancelada`);
+      } else {
+        message.warning(res.message || 'Línea restablecida en SGA');
+      }
+    } catch (err) {
+      message.error(err.message || 'Error al conectar con el servidor');
     }
   };
 
@@ -988,40 +1064,6 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                       {line.ITEMNAME || 'Sin descripción'}
                     </div>
 
-                    {/* 3. ALERTAS DE PREPARACIÓN PARCIAL (Si existen en NC_SGAWEB_DOCS) */}
-                    {sgaPrepForLine.length > 0 && (
-                      <div className="sga-alert-sga-prep">
-                        <div className="sga-alert-sga-prep-title">
-                          <CheckCircleOutlined /> Preparaciones previas registradas:
-                        </div>
-                        {sgaPrepForLine.map((p, pIdx) => (
-                          <div key={pIdx} className="sga-alert-sga-prep-item">
-                            <span>
-                              Lote/Doc: <strong>#{p.DocEntry}</strong> | De: <strong>{p.U_BinFrom || 'N/A'}</strong> ➜ A: <strong>{p.U_BinTo || '01-PDTE'}</strong> | Cantidad: <strong>{p.U_Quantity} ud.</strong>
-                            </span>
-                            <Popconfirm
-                              title="¿Eliminar esta preparación?"
-                              description="Se liberará el stock asignado a este pedido."
-                              onConfirm={() => handleDeleteSgaPrep(p.DocEntry)}
-                              okText="Sí, eliminar"
-                              cancelText="Cancelar"
-                              okButtonProps={{ danger: true }}
-                            >
-                              <Button
-                                size="small"
-                                danger
-                                type="link"
-                                icon={<DeleteOutlined />}
-                                style={{ padding: 0 }}
-                              >
-                                Borrar
-                              </Button>
-                            </Popconfirm>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
                     {/* 4. STOCK DISPONIBLE POR UBICACIÓN / SERIE */}
                     <div className="sga-stock-section">
                       <div className="sga-stock-title">
@@ -1053,6 +1095,80 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                           Sin ubicaciones registradas con stock
                         </div>
                       )}
+                    </div>
+
+                    {/* 4.5 BANNER CANTIDAD PREPARADA / TOTAL */}
+                    <div
+                      style={{
+                        backgroundColor: '#dbeafe',
+                        border: '1px solid #bfdbfe',
+                        borderRadius: 10,
+                        padding: '10px 14px',
+                        marginBottom: 16,
+                        textAlign: 'center'
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: '0.74rem',
+                          fontWeight: 800,
+                          color: '#475569',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px',
+                          marginBottom: 8
+                        }}
+                      >
+                        CANTIDAD PREPARADA / TOTAL
+                      </div>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 10
+                        }}
+                      >
+                        <InputNumber
+                          min={0}
+                          max={Math.round(total) > 0 ? Math.round(total) : 99999}
+                          step={1}
+                          precision={0}
+                          value={preparedQtys[idx] !== undefined ? preparedQtys[idx] : 0}
+                          onChange={(val) => setPreparedQtys(prev => ({ ...prev, [idx]: val === null ? null : Number(val) }))}
+                          onFocus={(e) => e.target.select()}
+                          onClick={(e) => e.target.select()}
+                          style={{
+                            width: 76,
+                            height: 40,
+                            borderRadius: 8,
+                            fontWeight: 800,
+                            fontSize: '1.35rem',
+                            color: '#0066ff',
+                            textAlign: 'center',
+                            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)',
+                            backgroundColor: '#ffffff'
+                          }}
+                          controls={false}
+                        />
+                        <span style={{ fontSize: '1.4rem', fontWeight: 800, color: '#475569' }}>/</span>
+                        <span style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0066ff' }}>
+                          {Math.round(total)}
+                        </span>
+                        <span style={{ fontSize: '0.92rem', fontWeight: 700, color: '#475569' }}>
+                          uds
+                        </span>
+                        <Tooltip title="Completar con cantidad solicitada">
+                          <ThunderboltOutlined
+                            onClick={() => setPreparedQtys(prev => ({ ...prev, [idx]: Math.round(total) }))}
+                            style={{
+                              color: '#0066ff',
+                              fontSize: '1.35rem',
+                              cursor: 'pointer',
+                              marginLeft: 6
+                            }}
+                          />
+                        </Tooltip>
+                      </div>
                     </div>
 
                     {/* 5. PASO 1: Escanear Artículo */}
@@ -1381,24 +1497,63 @@ export const DocumentDetailModal = ({ open, document, onClose, onSuccess, onOpen
                       </div>
                     )}
 
-                    {/* 7. BOTÓN CONFIRMAR LÍNEA */}
-                    <Button
-                      type={isLineConfirmed ? "default" : "primary"}
-                      icon={<CheckOutlined />}
-                      onClick={() => handleConfirmLine(idx, line)}
-                      block
-                      size="large"
-                      className={isLineConfirmed ? "sga-btn-confirm-line-confirmed" : "sga-btn-confirm-line"}
-                      style={isLineConfirmed ? {
-                        backgroundColor: '#10b981',
-                        borderColor: '#10b981',
-                        color: '#ffffff',
-                        fontWeight: 700,
-                        borderRadius: 8
-                      } : undefined}
-                    >
-                      {isLineConfirmed ? '✅ Línea Confirmada (Guardar cambios)' : 'Confirmar'}
-                    </Button>
+                    {/* 7. BOTÓN CONFIRMAR / CANCELAR LÍNEA */}
+                    {isLineConfirmed ? (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, width: '100%' }}>
+                        <Button
+                          type="primary"
+                          icon={<CheckOutlined />}
+                          onClick={() => handleConfirmLine(idx, line)}
+                          size="large"
+                          style={{
+                            width: '100%',
+                            height: 42,
+                            backgroundColor: '#10b981',
+                            borderColor: '#10b981',
+                            color: '#ffffff',
+                            fontWeight: 700,
+                            borderRadius: 8
+                          }}
+                        >
+                          Guardar
+                        </Button>
+                        <Popconfirm
+                          title="¿Cancelar confirmación?"
+                          description="La línea volverá a estado pendiente y se liberará la preparación."
+                          onConfirm={() => handleCancelLinePrep(idx, line)}
+                          okText="Sí, cancelar"
+                          cancelText="No"
+                          okButtonProps={{ danger: true }}
+                        >
+                          <Button
+                            danger
+                            block
+                            size="large"
+                            icon={<CloseCircleFilled />}
+                            style={{
+                              width: '100%',
+                              height: 42,
+                              borderRadius: 8,
+                              fontWeight: 700
+                            }}
+                          >
+                            Cancelar
+                          </Button>
+                        </Popconfirm>
+                      </div>
+                    ) : (
+                      <Button
+                        type="primary"
+                        icon={<CheckOutlined />}
+                        onClick={() => handleConfirmLine(idx, line)}
+                        block
+                        size="large"
+                        className="sga-btn-confirm-line"
+                        style={{ height: 42, borderRadius: 8, fontWeight: 700 }}
+                      >
+                        Confirmar
+                      </Button>
+                    )}
                   </Card>
                 </Col>
               );

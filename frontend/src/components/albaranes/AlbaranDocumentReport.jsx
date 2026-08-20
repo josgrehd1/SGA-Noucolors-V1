@@ -17,20 +17,33 @@ const formatDate = (dateVal) => {
   }
 };
 
-// Formateador de moneda (1.234,56 €)
+// Formateador de moneda española (1.234,56€)
 const formatCurrency = (val) => {
-  if (val === null || val === undefined || isNaN(val)) return '0,00';
-  return Number(val).toLocaleString('es-ES', {
+  if (val === null || val === undefined || isNaN(val)) return '0,00€';
+  const n = Number(val);
+  const formatted = n.toLocaleString('es-ES', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   });
+  return `${formatted}€`;
 };
 
-export const AlbaranDocumentReport = ({ albaran, esValorado = false, pageNumber = 1, totalPages = 1 }) => {
+// Formateador de número simple
+const formatNum = (val, decimals = 2) => {
+  if (val === null || val === undefined || isNaN(val)) return '0,00';
+  return Number(val).toLocaleString('es-ES', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
+  });
+};
+
+export const AlbaranDocumentReport = ({ albaran, pageNumber = 1, totalPages = 1 }) => {
   if (!albaran) return null;
 
+  const isValorado = Boolean(albaran.IsValorado || albaran.is_valorado);
   const cab = albaran.CabeceraCalculada || albaran.DirEnvioCalculada || null;
   const pago = albaran.CondicionesPagoCalculadas || null;
+  const desglose = albaran.DesgloseEconomico || {};
 
   // Determinar líneas consolidadas (regulares + notas de texto)
   const lineas = albaran.UnifiedLines || albaran.DocumentLines || [];
@@ -70,18 +83,21 @@ export const AlbaranDocumentReport = ({ albaran, esValorado = false, pageNumber 
           <tr>
             <td style={{ width: '50%' }}>
               <img src={logoImg} alt="NouColors Logo" className="sga-alb-logo" />
+              <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#000a38', marginTop: 2 }}>
+                Soluciones Técnicas en limpieza
+              </div>
             </td>
             <td style={{ width: '50%' }} className="sga-alb-company-info">
               <strong>Comercial Nou Colors, S.L.</strong><br />
               CIF: B12210662<br />
-              CTRA N-340A KM 970, Almazora (Castellón)<br />
+              CTRA N-340A KM 970, 12550 - Almazora (Castellón)<br />
               www.noucolors.com | +34 964 342 980
             </td>
           </tr>
         </tbody>
       </table>
 
-      {/* 2. Bloque de 3 Columnas Perfectamente Alineadas en Tabla */}
+      {/* 2. Bloque de 3 Columnas Superiores Alineadas */}
       <table className="sga-alb-header-info-table">
         <tbody>
           <tr>
@@ -120,7 +136,7 @@ export const AlbaranDocumentReport = ({ albaran, esValorado = false, pageNumber 
             <td style={{ width: '40%', paddingLeft: '12px' }}>
               <div className="sga-alb-section-title">DIRECCIÓN ENVÍO</div>
               <div className="sga-alb-main-text">{shipToCode}</div>
-              <div className="sga-alb-muted-text" style={{ fontSize: '10px' }}>{dirEnvio}</div>
+              <div className="sga-alb-muted-text" style={{ fontSize: '9.5px' }}>{dirEnvio}</div>
               {contacto && (
                 <div>
                   <strong>Contacto: </strong><span className="sga-alb-muted-text">{contacto}</span>
@@ -145,24 +161,27 @@ export const AlbaranDocumentReport = ({ albaran, esValorado = false, pageNumber 
       <div className="sga-alb-content-body">
         <table className="sga-alb-table">
           <thead>
-            <tr>
-              <th style={{ textAlign: 'left' }}>ARTÍCULO</th>
-              <th style={{ textAlign: 'center', width: '60px' }}>CANT.</th>
-              {esValorado && (
-                <>
-                  <th style={{ textAlign: 'right', width: '70px' }}>PRECIO</th>
-                  <th style={{ textAlign: 'center', width: '50px' }}>DTO</th>
-                  <th style={{ textAlign: 'right', width: '75px' }}>IMPORTE</th>
-                </>
-              )}
-            </tr>
+            {isValorado ? (
+              <tr style={{ background: '#000a38', color: '#ffffff' }}>
+                <th style={{ textAlign: 'left', width: '14%', padding: '6px 8px', fontSize: '9.5px', fontWeight: 'bold' }}>Artículo</th>
+                <th style={{ textAlign: 'left', width: '46%', padding: '6px 8px', fontSize: '9.5px', fontWeight: 'bold' }}>Descripción</th>
+                <th style={{ textAlign: 'right', width: '12%', padding: '6px 12px 6px 8px', fontSize: '9.5px', fontWeight: 'bold' }}>Cantidad</th>
+                <th style={{ textAlign: 'right', width: '13%', padding: '6px 12px 6px 8px', fontSize: '9.5px', fontWeight: 'bold' }}>Precio Neto</th>
+                <th style={{ textAlign: 'right', width: '15%', padding: '6px 8px', fontSize: '9.5px', fontWeight: 'bold' }}>Importe</th>
+              </tr>
+            ) : (
+              <tr style={{ background: '#000a38', color: '#ffffff' }}>
+                <th style={{ textAlign: 'left', padding: '5px 8px', fontSize: '9.5px', fontWeight: 'bold' }}>ARTÍCULO</th>
+                <th style={{ textAlign: 'center', width: '60px', padding: '5px 8px', fontSize: '9.5px', fontWeight: 'bold' }}>CANT.</th>
+              </tr>
+            )}
           </thead>
           <tbody>
             {/* Fila Informativa de Envío si aplica */}
             {shipToCode && !isGenericShip && (
               <tr className="sga-alb-info-row">
-                <td colSpan={esValorado ? 5 : 2} style={{ padding: '4px 8px' }}>
-                  <div style={{ fontSize: '10.5px', fontWeight: 'bold', color: '#111' }}>
+                <td colSpan={isValorado ? 5 : 2} style={{ padding: '4px 8px' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 'bold', color: '#111' }}>
                     <span className="sga-alb-info-tag">Info:</span>
                     <span>{shipToCode}</span>
                   </div>
@@ -174,14 +193,13 @@ export const AlbaranDocumentReport = ({ albaran, esValorado = false, pageNumber 
             {lineas.map((line, idx) => {
               const lineType = line.LineType || (line.ItemCode ? 'dlt_Regular' : 'dslt_Text');
               const isTextLine = ['dslt_Text', 'dlt_Text'].includes(lineType) || !line.ItemCode;
-              const isSubtotal = lineType === 'dslt_Subtotal';
 
               if (isTextLine) {
                 const textoInfo = line.LineText || line.ItemDescription || line.FreeText || '';
                 return (
                   <tr key={`text_${idx}`} className="sga-alb-info-row">
-                    <td colSpan={esValorado ? 5 : 2} style={{ padding: '4px 8px' }}>
-                      <div style={{ fontSize: '10px', fontWeight: 'bold', color: '#222' }}>
+                    <td colSpan={isValorado ? 5 : 2} style={{ padding: '4px 8px' }}>
+                      <div style={{ fontSize: '9.5px', fontWeight: 'bold', color: '#222' }}>
                         <span className="sga-alb-info-tag">Info:</span>
                         <span>{textoInfo}</span>
                       </div>
@@ -190,57 +208,56 @@ export const AlbaranDocumentReport = ({ albaran, esValorado = false, pageNumber 
                 );
               }
 
-              if (isSubtotal) {
+              // Línea Regular de Artículo
+              const qty = Number(line.Quantity || 0);
+              const price = Number(line.Price || 0);
+              const lineTotal = Number(line.LineTotal || (qty * price));
+              const textoLinea = line.FreeText || line.ItemDetails || line.Text || '';
+              const showExtraText = textoLinea && textoLinea.trim() && textoLinea.trim() !== String(line.ItemDescription || '').trim();
+
+              if (isValorado) {
                 return (
-                  <tr key={`subtotal_${idx}`}>
-                    <td colSpan={esValorado ? 4 : 1} style={{ textAlign: 'right', fontWeight: 'bold' }}>
-                      {line.LineText || 'Subtotal'}
+                  <tr key={`item_${line.ItemCode}_${idx}`} className="sga-alb-row-striped">
+                    <td style={{ padding: '5px 8px', fontSize: '10px', color: '#1e293b', verticalAlign: 'middle', borderBottom: '1px solid #e2e8f0' }}>
+                      {line.ItemCode}
                     </td>
-                    {esValorado && (
-                      <td style={{ textAlign: 'right', fontWeight: 'bold', color: 'var(--nou-blue)' }}>
-                        {formatCurrency(line.Subtotal)} €
-                      </td>
-                    )}
+                    <td style={{ padding: '5px 8px', verticalAlign: 'middle', borderBottom: '1px solid #e2e8f0' }}>
+                      <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '10.5px' }}>{line.ItemDescription || 'Sin descripción'}</div>
+                      {showExtraText && (
+                        <div style={{ color: '#334155', fontSize: '9px', paddingLeft: 6, borderLeft: '2px solid #cbd5e1', marginTop: 1 }}>{textoLinea.trim()}</div>
+                      )}
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: 600, fontSize: '10.5px', paddingRight: '12px', verticalAlign: 'middle', borderBottom: '1px solid #e2e8f0' }}>
+                      {formatNum(qty, 2)}
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: 600, fontSize: '10.5px', paddingRight: '12px', verticalAlign: 'middle', borderBottom: '1px solid #e2e8f0' }}>
+                      {formatNum(price, 2)}
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '10.5px', paddingRight: '8px', verticalAlign: 'middle', borderBottom: '1px solid #e2e8f0' }}>
+                      {formatNum(lineTotal, 2)}
+                    </td>
                   </tr>
                 );
               }
 
-              // Línea Regular de Artículo
-              const qty = Number(line.Quantity || 0);
-              const lineTotal = Number(line.LineTotal || 0);
-              const unitPrice = qty > 0 ? lineTotal / qty : 0;
-              const textoLinea = line.FreeText || line.ItemDetails || line.Text || '';
-              const showExtraText = textoLinea && textoLinea.trim() && textoLinea.trim() !== String(line.ItemDescription || '').trim();
-
               return (
                 <tr key={`item_${line.ItemCode}_${idx}`} className="sga-alb-row-striped">
-                  <td style={{ padding: '4px 8px' }}>
-                    <div className="sga-alb-item-title">
+                  <td style={{ padding: '5px 8px', verticalAlign: 'middle', borderBottom: '1px solid #f1f5f9' }}>
+                    <div style={{ fontWeight: 'bold', color: '#1d2433', fontSize: '10.5px' }}>
                       {line.ItemDescription || 'Sin descripción'}
                     </div>
-                    <div className="sga-alb-item-code">
+                    <div style={{ color: '#64748b', fontSize: '9px' }}>
                       Cod: {line.ItemCode}
                     </div>
                     {showExtraText && (
-                      <div className="sga-alb-item-notes">
+                      <div style={{ color: '#334155', fontSize: '9px', paddingLeft: 6, borderLeft: '2px solid #cbd5e1', marginTop: 1 }}>
                         {textoLinea.trim()}
                       </div>
                     )}
                   </td>
-
-                  <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '11px' }}>
-                    {qty}
+                  <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '11px', verticalAlign: 'middle', borderBottom: '1px solid #f1f5f9' }}>
+                    {formatNum(qty, 2)}
                   </td>
-
-                  {esValorado && (
-                    <>
-                      <td style={{ textAlign: 'right' }}>{formatCurrency(unitPrice)} €</td>
-                      <td style={{ textAlign: 'center' }}>0%</td>
-                      <td style={{ textAlign: 'right', fontWeight: 'bold', color: 'var(--nou-blue)' }}>
-                        {formatCurrency(lineTotal)} €
-                      </td>
-                    </>
-                  )}
                 </tr>
               );
             })}
@@ -248,50 +265,187 @@ export const AlbaranDocumentReport = ({ albaran, esValorado = false, pageNumber 
         </table>
       </div>
 
-      {/* 4. Bloque Inferior de Pie de Página (Fijado siempre al fondo del A4) */}
-      <div className="sga-alb-bottom-section">
+      {/* 4. Bloque Inferior de Pie de Página */}
+      <div className="sga-alb-bottom-section" style={{ marginTop: 'auto', paddingTop: 4 }}>
         {/* Cuadro de Aviso IMPORTANTE */}
-        <div className="sga-alb-important-box">
-          <div className="sga-alb-important-title">IMPORTANTE</div>
-          <p className="sga-alb-important-desc">
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontWeight: 'bold', fontSize: '10.5px', color: '#000000', marginBottom: 3, letterSpacing: '0.3px' }}>
+            IMPORTANTE
+          </div>
+          <p style={{ fontStyle: 'italic', margin: 0, fontSize: '9px', color: '#1e293b', lineHeight: 1.35 }}>
             Dispone de un plazo de 48 horas para verificar que el material recibido es correcto y conforme a su pedido;
             una vez transcurrido dicho periodo, no se admitirán reclamaciones.
           </p>
         </div>
 
-        {/* Cajas Paralelas: Conformidad Cliente + Condiciones de Pago */}
-        <div className="sga-alb-boxes-flex">
-          {/* Caja 1: Conformidad de Firma (35% de ancho) con Nombre de Cliente */}
-          <div className="sga-alb-signature-box">
-            <div className="sga-alb-box-header">CONFORMIDAD CLIENTE</div>
-            <div className="sga-alb-box-body sga-alb-signature-body">
-              {cardName && (
-                <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '9px', marginBottom: '4px', textAlign: 'center', lineHeight: '1.2' }}>
-                  {cardName}
+        {isValorado ? (
+          <>
+            {/* 1. Fila de 3 Bloques con Badges Curvados */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 10 }}>
+              {/* Bloque 1: Forma de Pago */}
+              <div style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+                <div style={{
+                  background: '#000a38',
+                  color: '#ffffff',
+                  padding: '6px 12px',
+                  fontSize: '9px',
+                  fontWeight: 'bold',
+                  textAlign: 'center',
+                  borderRadius: '6px 18px 18px 6px',
+                  whiteSpace: 'nowrap',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                }}>
+                  Forma de Pago
                 </div>
-              )}
-              <div style={{ color: '#94a3b8', fontSize: '8.5px' }}>
-                FECHA — FIRMA — SELLO
+                <div style={{ paddingLeft: 8, fontSize: '9.5px', color: '#000000', fontWeight: 500 }}>
+                  {formaPago}
+                </div>
               </div>
-            </div>
-          </div>
 
-          {/* Caja 2: Condiciones de Pago (65% de ancho) */}
-          <div className="sga-alb-payment-box">
-            <div className="sga-alb-box-header">CONDICIONES DE PAGO</div>
-            <div className="sga-alb-box-body">
-              <div className="sga-alb-payment-line">
-                <strong>Forma de Pago:</strong> {formaPago}
+              {/* Bloque 2: Vía de Pago */}
+              <div style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+                <div style={{
+                  background: '#000a38',
+                  color: '#ffffff',
+                  padding: '6px 12px',
+                  fontSize: '9px',
+                  fontWeight: 'bold',
+                  textAlign: 'center',
+                  borderRadius: '6px 18px 18px 6px',
+                  whiteSpace: 'nowrap',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                }}>
+                  Via de Pago
+                </div>
+                <div style={{ paddingLeft: 8, fontSize: '9.5px', color: '#000000', fontWeight: 500 }}>
+                  {viaPago}
+                </div>
               </div>
-              <div className="sga-alb-payment-line">
-                <strong>Vía de Pago:</strong> {viaPago}
+
+              {/* Bloque 3: Domiciliacion */}
+              <div style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+                <div style={{
+                  background: '#000a38',
+                  color: '#ffffff',
+                  padding: '6px 12px',
+                  fontSize: '9px',
+                  fontWeight: 'bold',
+                  textAlign: 'center',
+                  borderRadius: '6px 18px 18px 6px',
+                  whiteSpace: 'nowrap',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                }}>
+                  Domiciliacion
+                </div>
+                <div style={{ paddingLeft: 8, fontSize: '9px', color: '#000000', fontWeight: 500 }}>
+                  {domiciliacion}
+                </div>
               </div>
-              <div className="sga-alb-payment-line">
-                <strong>Domiciliación:</strong> {domiciliacion}
+            </div>
+
+            {/* 2. Barra de Totales y Desglose de IVA */}
+            <div style={{ marginBottom: 10, borderRadius: 6, overflow: 'hidden' }}>
+              <div style={{
+                display: 'flex',
+                background: '#000a38',
+                color: '#ffffff',
+                textAlign: 'center',
+                fontSize: '9.5px',
+                fontWeight: 'bold',
+                padding: '6px 0',
+                borderRadius: '6px 6px 0 0'
+              }}>
+                <div style={{ width: '20%' }}>Importe</div>
+                <div style={{ width: '20%' }}>Bonificación</div>
+                <div style={{ width: '20%' }}>Base Imponible</div>
+                <div style={{ width: '20%' }}>I.V.A. %</div>
+                <div style={{ width: '20%' }}>Total</div>
+              </div>
+              <div style={{
+                display: 'flex',
+                background: '#717579',
+                color: '#ffffff',
+                textAlign: 'center',
+                padding: '8px 0',
+                fontWeight: 'bold',
+                fontSize: '11px',
+                borderRadius: '0 0 6px 6px'
+              }}>
+                <div style={{ width: '20%' }}>{formatCurrency(desglose.ImporteBruto)}</div>
+                <div style={{ width: '20%' }}>{formatNum(desglose.Bonificacion, 2)}</div>
+                <div style={{ width: '20%' }}>{formatCurrency(desglose.BaseImponible)}</div>
+                <div style={{ width: '20%', display: 'flex', justifyContent: 'center', gap: 10 }}>
+                  <span style={{ fontSize: '10px' }}>{formatNum(desglose.VatPercent, 2)}%</span>
+                  <span>{formatCurrency(desglose.VatSum)}</span>
+                </div>
+                <div style={{ width: '20%' }}>{formatCurrency(desglose.DocTotal)}</div>
+              </div>
+            </div>
+
+            {/* 3. Caja de Conformidad Cliente (Ancho approx 44% a la izquierda) */}
+            <div style={{ width: '44%', marginBottom: 4 }}>
+              <div style={{
+                background: '#000a38',
+                color: '#ffffff',
+                textAlign: 'center',
+                fontWeight: 'bold',
+                fontSize: '10px',
+                padding: '6px 0',
+                borderRadius: '6px 6px 0 0',
+                border: '1.5px solid #000a38',
+                borderBottom: 'none'
+              }}>
+                Conformidad Cliente
+              </div>
+              <div style={{
+                border: '1.5px solid #000a38',
+                borderTop: 'none',
+                borderRadius: '0 0 8px 8px',
+                height: 68,
+                padding: 8,
+                display: 'flex',
+                alignItems: 'flex-end',
+                background: '#ffffff'
+              }}>
+                <div style={{ fontSize: '8.5px', fontWeight: 'bold', color: '#1e293b', letterSpacing: '0.3px' }}>
+                  FECHA-FIRMA-SELLO
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          /* Cajas Paralelas No Valorado */
+          <div className="sga-alb-boxes-flex">
+            <div className="sga-alb-signature-box">
+              <div className="sga-alb-box-header">CONFORMIDAD CLIENTE</div>
+              <div className="sga-alb-box-body sga-alb-signature-body">
+                {cardName && (
+                  <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '9px', marginBottom: '4px', textAlign: 'center', lineHeight: '1.2' }}>
+                    {cardName}
+                  </div>
+                )}
+                <div style={{ color: '#94a3b8', fontSize: '8.5px' }}>
+                  FECHA — FIRMA — SELLO
+                </div>
+              </div>
+            </div>
+
+            <div className="sga-alb-payment-box">
+              <div className="sga-alb-box-header">CONDICIONES DE PAGO</div>
+              <div className="sga-alb-box-body">
+                <div className="sga-alb-payment-line">
+                  <strong>Forma de Pago:</strong> {formaPago}
+                </div>
+                <div className="sga-alb-payment-line">
+                  <strong>Vía de Pago:</strong> {viaPago}
+                </div>
+                <div className="sga-alb-payment-line">
+                  <strong>Domiciliación:</strong> {domiciliacion}
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* 5. Pie Legal de Registro Mercantil */}
         <div className="sga-alb-legal-footer">
@@ -301,7 +455,7 @@ export const AlbaranDocumentReport = ({ albaran, esValorado = false, pageNumber 
 
         {/* 6. Numeración de Página */}
         <div className="sga-alb-page-number">
-          Página {pageNumber} / {totalPages}
+          Página {pageNumber} de {totalPages}
         </div>
       </div>
     </div>

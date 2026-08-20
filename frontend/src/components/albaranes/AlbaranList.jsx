@@ -8,10 +8,13 @@ import {
   PrinterOutlined
 } from '@ant-design/icons';
 import client from '../../utils/client';
+import { useAuth } from '../../context/AuthContext';
 
 const { Text } = Typography;
 
-export const AlbaranList = ({ albaranes = [], onSelectAlbaran, loading }) => {
+export const AlbaranList = ({ albaranes = [], onSelectAlbaran, loading, operariosMap = {}, clientesValoradosSet = new Set(), isSuper = false }) => {
+  const { activePdfPrinter } = useAuth();
+
   if (!albaranes || albaranes.length === 0) {
     return (
       <Card style={{ textAlign: 'center', padding: '40px 16px', borderRadius: 12, border: '1px solid #dee2e6', marginTop: 16 }}>
@@ -25,8 +28,11 @@ export const AlbaranList = ({ albaranes = [], onSelectAlbaran, loading }) => {
   const handlePrintPdf = async (e, docentry) => {
     e.stopPropagation();
     try {
-      message.loading({ content: 'Enviando albarán a la impresora del servidor...', key: 'print_pdf' });
-      const res = await client.post(`/albaranes/${docentry}/imprimir`);
+      message.loading({ content: 'Enviando albarán a la impresora por Socket IP...', key: 'print_pdf' });
+      const res = await client.post(`/albaranes/${docentry}/imprimir`, {
+        printer_ip: activePdfPrinter || undefined,
+        copies: 2
+      });
       if (res.status === 'ok') {
         message.success({ content: res.message || 'Albarán enviado a la impresora', key: 'print_pdf' });
       } else {
@@ -43,16 +49,25 @@ export const AlbaranList = ({ albaranes = [], onSelectAlbaran, loading }) => {
         const docentry = alb.DocEntry || alb.DOCENTRY;
         const docnum = alb.DocNum || alb.DOCNUM;
         const cardname = alb.CardName || alb.CARDNAME || 'Cliente no especificado';
-        const cardcode = alb.CardCode || alb.CARDCODE || '';
+        const cardcode = String(alb.CardCode || alb.CARDCODE || '').trim().toUpperCase();
         const docdate = alb.DocDate ? String(alb.DocDate).substring(0, 10) : '';
-        const status = alb.DocumentStatus || alb.DOCUMENTSTATUS;
-        const isOpen = status === 'bost_Open' || status === 'O';
+        const empId = alb.U_BXPEmpID || alb.DocumentsOwner;
+        const opName = operariosMap[empId];
+
+        // Verificación instantánea en memoria de cliente Valorado
+        const isVal = (clientesValoradosSet && clientesValoradosSet.has(cardcode)) || Boolean(alb.IsValorado ?? alb.is_valorado ?? alb.IS_VALORADO);
 
         return (
-          <Col xs={24} sm={12} lg={8} key={docentry || docnum}>
+          <Col xs={24} sm={12} lg={8} key={docentry || docnum} style={{ display: 'flex' }}>
             <Card
               className="sga-alb-card"
-              styles={{ body: { padding: 16 } }}
+              style={{
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column'
+              }}
+              styles={{ body: { padding: 16, height: '100%', display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between' } }}
             >
               {/* 1. Cabecera de la Tarjeta */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
@@ -68,9 +83,22 @@ export const AlbaranList = ({ albaranes = [], onSelectAlbaran, loading }) => {
                   )}
                 </div>
 
-                <Tag color={isOpen ? 'green' : 'default'} style={{ borderRadius: 6, fontWeight: 600 }}>
-                  {isOpen ? 'Abierto' : 'Cerrado'}
-                </Tag>
+                <Space size={4} wrap style={{ justifyContent: 'flex-end' }}>
+                  {isVal ? (
+                    <Tag color="green" style={{ borderRadius: 6, fontWeight: 700, fontSize: '0.75rem' }}>
+                      Valorado
+                    </Tag>
+                  ) : (
+                    <Tag color="blue" style={{ borderRadius: 6, fontWeight: 600, fontSize: '0.75rem' }}>
+                      No valorado
+                    </Tag>
+                  )}
+                  {isSuper && opName && (
+                    <Tag color="cyan" style={{ borderRadius: 6, fontWeight: 600, fontSize: '0.75rem' }}>
+                      👤 {opName.split(' ')[0]}
+                    </Tag>
+                  )}
+                </Space>
               </div>
 
               {/* 2. Información Central */}
@@ -98,7 +126,7 @@ export const AlbaranList = ({ albaranes = [], onSelectAlbaran, loading }) => {
               </div>
 
               {/* 3. Acciones Inferiores Uniformes */}
-              <div style={{ paddingTop: 10, borderTop: '1px solid #f0f0f0', display: 'flex', gap: 8 }}>
+              <div style={{ marginTop: 'auto', paddingTop: 10, borderTop: '1px solid #f0f0f0', display: 'flex', gap: 8 }}>
                 <Button
                   type="primary"
                   size="small"

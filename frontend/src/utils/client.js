@@ -10,6 +10,23 @@ const client = axios.create({
   }
 });
 
+// Interceptor de peticiones para propagar el estado de impresión en TEST y las impresoras seleccionadas
+client.interceptors.request.use((config) => {
+  const testPrintEnabled = localStorage.getItem('sga_test_print_enabled');
+  if (testPrintEnabled !== null) {
+    config.headers['X-Test-Print-Enabled'] = testPrintEnabled;
+  }
+  const activePdf = localStorage.getItem('sga_active_pdf_printer');
+  if (activePdf) {
+    config.headers['X-Active-Pdf-Printer'] = activePdf;
+  }
+  const activeZebra = localStorage.getItem('sga_active_printer');
+  if (activeZebra) {
+    config.headers['X-Active-Printer'] = activeZebra;
+  }
+  return config;
+});
+
 // Interceptor para manejo unificado de respuestas y extracción de mensajes de error
 client.interceptors.response.use(
   (response) => response.data,

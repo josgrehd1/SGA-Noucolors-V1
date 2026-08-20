@@ -204,6 +204,53 @@ def finalizar_preparacion(objtype, docentry):
     parcial = request.args.get('parcial', 'false').lower() == 'true'
     return DocsService.finalizar_preparacion(objtype=objtype, docentry=docentry, parcial=parcial)
 
+@api_bp.route('/docs/cancelar-linea', methods=["POST"])
+@sap_login_required
+def cancelar_linea_preparada():
+    data = request.get_json(silent=True) or {}
+    docentry = data.get('docentry')
+    itemcode = data.get('itemcode')
+    linenum = data.get('linenum')
+
+    try:
+        doc_entry_int = int(docentry) if docentry is not None else None
+    except (ValueError, TypeError):
+        doc_entry_int = None
+
+    if doc_entry_int is None and not docentry:
+        return jsonify({'status': 'error', 'message': 'Falta docentry'}), 400
+
+    filter_payload = {
+        "U_Estado": "O"
+    }
+    if doc_entry_int is not None:
+        filter_payload["U_PedidoEntry"] = doc_entry_int
+    else:
+        filter_payload["U_PedidoEntry"] = str(docentry)
+
+    if itemcode:
+        filter_payload["U_ItemCode"] = str(itemcode).strip()
+
+    if linenum is not None:
+        try:
+            filter_payload["U_PedidoLine"] = int(linenum)
+        except (ValueError, TypeError):
+            pass
+
+    try:
+        success, msg = DocsService.borrar_preparacion_stock(filter_payload)
+        return jsonify({'status': 'ok', 'message': msg})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 400
+
+@api_bp.route('/print/test-toggle', methods=["POST"])
+@sap_login_required
+def toggle_test_print():
+    data = request.get_json(silent=True) or {}
+    enabled = bool(data.get('enabled', False))
+    session['test_print_enabled'] = enabled
+    return jsonify({'status': 'ok', 'enabled': enabled})
+
 @api_bp.route('/docs/change-default-bin', methods=["POST"])
 @api_bp.route('/stock/change-default-bin', methods=["POST"])
 @sap_login_required
@@ -354,12 +401,26 @@ def list_albaranes():
     per_page = int(request.args.get('per_page', 20))
     filters = {
         'doc': request.args.get('doc', ''),
+        'docnum': request.args.get('docnum', ''),
         'cliente': request.args.get('cliente', ''),
+        'operario_id': request.args.get('operario_id', ''),
         'date_from': request.args.get('date_from', ''),
         'date_to': request.args.get('date_to', '')
     }
     res = AlbaranService.list_albaranes(page=page, per_page=per_page, filters=filters)
     return jsonify({'status': 'ok', **res})
+
+@api_bp.route('/albaranes/operarios', methods=["GET"])
+@sap_login_required
+def get_albaranes_operarios():
+    operarios = AlbaranService.get_operarios()
+    return jsonify({'status': 'ok', 'operarios': operarios})
+
+@api_bp.route('/albaranes/clientes-valorados', methods=["GET"])
+@sap_login_required
+def get_clientes_valorados():
+    clientes = list(AlbaranService.get_clientes_valorados_set())
+    return jsonify({'status': 'ok', 'clientes_valorados': clientes})
 
 @api_bp.route('/albaranes/<int:docentry>', methods=["GET"])
 @sap_login_required
@@ -381,8 +442,9 @@ def get_albaran_pdf(docentry):
 @sap_login_required
 def imprimir_albaran_pdf(docentry):
     data = request.get_json(silent=True) or {}
-    copies = int(data.get('copies', 1))
-    success, msg = AlbaranService.imprimir_albaran(docentry, copies=copies)
+    copies = int(data.get('copies', 2))
+    printer_ip = data.get('printer_ip') or data.get('printer_id') or ''
+    success, msg = AlbaranService.imprimir_albaran(docentry, copies=copies, printer_ip=printer_ip)
     if success:
         return jsonify({'status': 'ok', 'message': msg})
     else:
@@ -395,8 +457,15 @@ def imprimir_albaran_pdf(docentry):
 @api_bp.route('/print/printers', methods=["GET"])
 @sap_login_required
 def get_printers():
-    printers = PrintService.get_available_printers()
-    return jsonify({'status': 'ok', 'impresoras': printers})
+    from app.utils.extensions import print_handler
+    zebra_printers = print_handler.get_zebra_printers()
+    pdf_printers = print_handler.get_pdf_printers()
+    return jsonify({
+        'status': 'ok',
+        'impresoras': zebra_printers,
+        'zebra_printers': zebra_printers,
+        'pdf_printers': pdf_printers
+    })
 
 @api_bp.route('/print/product', methods=["POST"])
 @api_bp.route('/print/articulo', methods=["POST"])

@@ -35,8 +35,7 @@ export const StockPage = () => {
     if (!socket) return;
 
     const handleSapUpdate = (data) => {
-      console.log('[WebSocket Event Received] Actualizando vista de stock...', data);
-      fetchStock(page, filters);
+      fetchStock(page, filters, true);
     };
 
     socket.on('sap_update', handleSapUpdate);
@@ -45,8 +44,8 @@ export const StockPage = () => {
     };
   }, [socket, page, filters]);
 
-  const fetchStock = async (targetPage = 1, currentFilters = filters) => {
-    setLoading(true);
+  const fetchStock = async (targetPage = 1, currentFilters = filters, isSilent = false) => {
+    if (!isSilent) setLoading(true);
     try {
       const params = {
         page: targetPage,
@@ -60,13 +59,15 @@ export const StockPage = () => {
         setItems(res.productos || []);
         setTotalCount(res.total_count || 0);
         setPage(targetPage);
-      } else {
+      } else if (!isSilent) {
         message.error(res.message || 'Error consultando stock');
       }
     } catch (err) {
-      message.error(err.message || 'Error cargando productos desde SAP');
+      if (!isSilent) {
+        message.error(err.message || 'Error cargando productos desde SAP');
+      }
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   };
 

@@ -12,12 +12,41 @@ class AlbaranService:
     Reproduce con total fidelidad el formato, cálculos y estructura del SGA original.
     """
 
+    _cached_clientes_valorados = set()
+    _last_clientes_valorados_fetch = 0
+
+    @staticmethod
+    def get_clientes_valorados_set():
+        """
+        Obtiene el conjunto de CardCodes que tienen configurado 'Albaran en A4' en SAP (OCRD.U_MAC_AlbaranD).
+        Utiliza caché en memoria para responder en 0ms.
+        """
+        import time
+        now = time.time()
+        if AlbaranService._cached_clientes_valorados and (now - AlbaranService._last_clientes_valorados_fetch < 300):
+            return AlbaranService._cached_clientes_valorados
+
+        try:
+            res = SapRepository.get_data(
+                resource="BusinessPartners",
+                selection=["CardCode"],
+                filter={"U_MAC_AlbaranD": "Albaran en A4"},
+                all_results=True
+            )
+            if res.get('status') == 'ok' and res.get('data'):
+                AlbaranService._cached_clientes_valorados = {b.get('CardCode') for b in res['data'] if b.get('CardCode')}
+                AlbaranService._last_clientes_valorados_fetch = now
+        except Exception:
+            pass
+
+        return AlbaranService._cached_clientes_valorados
+
     @staticmethod
     def list_albaranes(page=1, per_page=20, filters=None, sort_by=None, sort_order=None):
         sap_filter = AlbaranService._build_albaranes_filter(filters or {})
         result = SapRepository.get_data(
             resource="DeliveryNotes",
-            selection=["DocEntry", "DocNum", "DocDate", "DocumentStatus", "CardCode", "CardName", "DocTotal", "DocumentLines", "VatSum"],
+            selection=["DocEntry", "DocNum", "DocDate", "DocumentStatus", "CardCode", "CardName", "DocTotal", "U_BXPEmpID", "Comments"],
             filter=sap_filter,
             orderby=sort_by if sort_by else "DocDate",
             order_direction=sort_order if sort_order else "desc",
@@ -29,6 +58,12 @@ class AlbaranService:
             raise Exception(f"SAP query failed: {result.get('message')}")
         
         documentos = result.get('data', [])
+        clientes_valorados = {str(c).strip().upper() for c in AlbaranService.get_clientes_valorados_set()}
+
+        for doc in documentos:
+            c_code = str(doc.get('CardCode') or '').strip().upper()
+            doc['IsValorado'] = bool(c_code and c_code in clientes_valorados)
+
         total_count = result.get('count', len(documentos))
         total_pages = (total_count + per_page - 1) // per_page if per_page else 1
         
@@ -40,19 +75,68 @@ class AlbaranService:
         }
 
     @staticmethod
+    def get_operarios():
+        """
+        Obtiene exclusivamente la lista de operarios y supervisores autorizados que trabajan con el SGA (U_MAC_User registrado).
+        """
+        info = SapRepository.get_data(
+            resource="EmployeesInfo",
+            selection=["EmployeeID", "FirstName", "LastName", "U_MAC_User", "U_U_MAC_Nivel", "Active"]
+        )
+        if info.get('status') != 'ok' or not info.get('data'):
+            return []
+        
+        operarios = []
+        for e in info['data']:
+            user_code = str(e.get('U_MAC_User') or '').strip()
+            # Solo incluir si tiene usuario asignado para entrar y preparar pedidos en el SGA
+            if not user_code:
+                continue
+
+            act = str(e.get('Active', '')).upper()
+            if act in ['TNO', 'N', 'FALSE', '0']:
+                continue
+
+            first = (e.get('FirstName') or '').strip()
+            last = (e.get('LastName') or '').strip()
+            full_name = f"{first} {last}".strip()
+            emp_id = e.get('EmployeeID')
+            
+            if emp_id:
+                operarios.append({
+                    'id': emp_id,
+                    'name': full_name or user_code,
+                    'user': user_code
+                })
+
+        operarios.sort(key=lambda x: x['name'])
+        return operarios
+
+    @staticmethod
     def _build_albaranes_filter(filters):
         sap_filter = {}
         emp_id = session.get('sap_employee_id')
+        is_super = session.get('sap_nivel') == 'S' or str(session.get('sap_user', '')).lower() == 'manager'
 
-        # Filtrar exclusivamente los albaranes creados por el operario autenticado en SAP (U_BXPEmpID)
-        if emp_id:
-            try:
-                sap_filter["U_BXPEmpID"] = int(emp_id)
-            except (ValueError, TypeError):
-                sap_filter["U_BXPEmpID"] = emp_id
+        # 1. Control de Visibilidad por Rol:
+        # - Supervisor: Puede ver todos los albaranes o filtrar por un operario seleccionado
+        # - Operario: Únicamente ve sus propios albaranes creados
+        if is_super:
+            operario_sel = filters.get('operario_id') or filters.get('operario')
+            if operario_sel and str(operario_sel).strip():
+                try:
+                    sap_filter["U_BXPEmpID"] = int(operario_sel)
+                except (ValueError, TypeError):
+                    sap_filter["U_BXPEmpID"] = operario_sel
+        else:
+            if emp_id:
+                try:
+                    sap_filter["U_BXPEmpID"] = int(emp_id)
+                except (ValueError, TypeError):
+                    sap_filter["U_BXPEmpID"] = emp_id
 
-        if filters.get('doc'):
-            val = str(filters['doc']).replace('#', '').strip()
+        if filters.get('doc') or filters.get('docnum'):
+            val = str(filters.get('doc') or filters.get('docnum')).replace('#', '').strip()
             if val.isdigit():
                 sap_filter["DocNum"] = int(val)
 
@@ -67,34 +151,68 @@ class AlbaranService:
         
         return sap_filter
 
+    _cached_regiones = []
+    _cached_payment_terms = {}
+    _cached_payment_methods = {}
+    _cached_series = {}
+
     @staticmethod
-    def get_albaran_detalle(docentry, master_session=None):
+    def get_albaran_detalle(docentry, master_session=None, resource=None):
         """
         Obtiene y procesa un albarán completo con todas sus cabeceras, líneas especiales,
-        direcciones de envío/fiscal formateadas y condiciones de pago calculadas (igual que SGA original).
+        direcciones de envío/fiscal formateadas y condiciones de pago calculadas de forma ultrarrápida (1 consulta directa a SAP).
+        Soporta DeliveryNotes (Ventas) y PurchaseDeliveryNotes (Compras).
         """
         m_session = master_session or sl_handler.ensure_master_session()
 
-        resultado = SapRepository.get_data("DeliveryNotes", id=int(docentry), expand=["BusinessPartner"], master_session=m_session)
-        
+        target_resource = resource or "DeliveryNotes"
+        resultado = SapRepository.get_data(target_resource, id=int(docentry), master_session=m_session)
+        if (resultado.get('status') != "ok" or not resultado.get('data')) and not resource:
+            # Fallback a PurchaseDeliveryNotes si no se encuentra en DeliveryNotes
+            res_compra = SapRepository.get_data("PurchaseDeliveryNotes", id=int(docentry), master_session=m_session)
+            if res_compra.get('status') == "ok" and res_compra.get('data'):
+                resultado = res_compra
+                target_resource = "PurchaseDeliveryNotes"
+
         if resultado.get('status') != "ok" or not resultado.get('data'):
-            # Fallback en 2 pasos si la primera consulta no devuelve datos
-            resultado = SapRepository.get_data("DeliveryNotes", id=int(docentry), master_session=m_session)
-            if resultado.get('status') != "ok" or not resultado.get('data'):
-                err_detail = resultado.get('message', 'No se obtuvieron datos de SAP')
-                raise ValueError(f"No se encontraron datos para el albarán #{docentry}. ({err_detail})")
-                
-            albaran = resultado['data'][0]
-            card_code = albaran.get('CardCode')
-            if card_code:
-                bp_res = SapRepository.get_data("BusinessPartners", id=card_code, master_session=m_session)
-                if bp_res.get('status') == 'ok' and bp_res.get('data'):
-                    albaran['BusinessPartner'] = bp_res['data'][0]
-        else:
-            albaran = resultado['data'][0]
+            err_detail = resultado.get('message', 'No se obtuvieron datos de SAP')
+            raise ValueError(f"No se encontraron datos para el albarán #{docentry}. ({err_detail})")
+            
+        albaran = resultado['data'][0]
+        albaran['_resource'] = target_resource
+        card_code = str(albaran.get('CardCode') or '').strip().upper()
+
+        clientes_valorados = {str(c).strip().upper() for c in AlbaranService.get_clientes_valorados_set()}
+        is_valorado = bool(card_code and card_code in clientes_valorados)
+        albaran['IsValorado'] = is_valorado
+        albaran['is_valorado'] = is_valorado
+
+        # Desglose económico para Albarán Valorado
+        doc_total = float(albaran.get('DocTotal', 0) or 0)
+        vat_sum = float(albaran.get('VatSum', 0) or 0)
+        total_discount = float(albaran.get('TotalDiscount', 0) or 0)
+        
+        sum_lines = sum(float(l.get('LineTotal', 0) or 0) for l in albaran.get('DocumentLines', []))
+        base_imponible = (doc_total - vat_sum) if (doc_total and vat_sum) else sum_lines
+        importe_bruto = sum_lines if sum_lines > 0 else (base_imponible + total_discount)
+
+        vat_percent = 21.0
+        for l in albaran.get('DocumentLines', []):
+            pct = l.get('TaxPercentagePerRow') or l.get('VatPercent')
+            if pct is not None and float(pct) > 0:
+                vat_percent = float(pct)
+                break
+
+        albaran['DesgloseEconomico'] = {
+            'ImporteBruto': importe_bruto,
+            'Bonificacion': total_discount,
+            'BaseImponible': base_imponible,
+            'VatPercent': vat_percent,
+            'VatSum': vat_sum,
+            'DocTotal': doc_total
+        }
 
         albaran["UnifiedLines"] = AlbaranService._consolidar_lineas(albaran)
-        AlbaranService._add_machine_data(albaran["UnifiedLines"], master_session=m_session)
         AlbaranService._procesar_direccion_envio(albaran, master_session=m_session)
 
         return albaran
@@ -631,7 +749,29 @@ class AlbaranService:
             for row in lineas:
                 if 'DocEntry' in row:
                     SapRepository.update(resource="NC_SGAWEB_DOCS", id=row['DocEntry'], payload={"U_Estado": 'C'})
-            return jsonify({"status": "ok", "message": "Albarán generado correctamente en SAP"})
+
+            created_albaran_data = res.json() if res.content else {}
+            created_docentry = created_albaran_data.get('DocEntry')
+            created_docnum = created_albaran_data.get('DocNum')
+
+            # --- Impresión Automática de 2 Copias al Finalizar / Entrega Parcial ---
+            print_msg = ""
+            if created_docentry:
+                try:
+                    p_success, p_msg = AlbaranService.imprimir_albaran(created_docentry, copies=2)
+                    if p_success:
+                        print_msg = " y enviado a la impresora (2 copias)"
+                    else:
+                        print_msg = f" (Aviso de impresión: {p_msg})"
+                except Exception as p_err:
+                    print_msg = f" (Error en cola de impresión: {p_err})"
+
+            return jsonify({
+                "status": "ok",
+                "message": f"Albarán #{created_docnum or created_docentry} generado correctamente en SAP{print_msg}",
+                "docentry": created_docentry,
+                "docnum": created_docnum
+            })
         else:
             err_msg = SapRepository.parse_sap_error(res)
             if "has already been closed" in str(err_msg).lower():
@@ -654,16 +794,16 @@ class AlbaranService:
             raise Exception(f"Error generando documento PDF de albarán: {str(e)}")
 
     @staticmethod
-    def imprimir_albaran(docentry, copies=1):
+    def imprimir_albaran(docentry, copies=2, printer_ip=''):
         """
-        Genera el PDF del albarán y lo envía a imprimir a la impresora PDF configurada.
+        Genera el PDF del albarán y lo envía a imprimir a la impresora PDF configurada (por Socket IP directa).
         """
         try:
             albaran = AlbaranService.get_albaran_detalle(docentry)
             pdf_bytes = AlbaranService.generar_pdf_bytes(albaran)
 
             for _ in range(max(1, copies)):
-                success, msg = print_handler.send_pdf_to_printer(pdf_bytes)
+                success, msg = print_handler.send_pdf_to_printer(pdf_bytes, printer_ip=printer_ip)
                 if not success:
                     return False, f"Fallo al enviar a impresora PDF: {msg}"
 

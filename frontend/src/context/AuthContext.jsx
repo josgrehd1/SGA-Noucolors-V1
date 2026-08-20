@@ -9,8 +9,33 @@ const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(storage.getUserSession());
   const [loading, setLoading] = useState(!storage.getUserSession());
-  const [activePrinter, setActivePrinter] = useState(storage.getActivePrinter() || '');
+  const [activePrinter, setActivePrinterState] = useState(storage.getActivePrinter() || '');
+  const [activePdfPrinter, setActivePdfPrinterState] = useState(storage.getActivePdfPrinter() || '');
   const [printersList, setPrintersList] = useState([]);
+  const [pdfPrintersList, setPdfPrintersList] = useState([]);
+  const [testPrintEnabled, setTestPrintEnabledState] = useState(storage.getTestPrintEnabled());
+
+  const setActivePrinter = (ip) => {
+    setActivePrinterState(ip || '');
+    storage.setActivePrinter(ip || '');
+  };
+
+  const setActivePdfPrinter = (ip) => {
+    setActivePdfPrinterState(ip || '');
+    storage.setActivePdfPrinter(ip || '');
+  };
+
+  const setTestPrintEnabled = (val) => {
+    const isEnabled = Boolean(val);
+    setTestPrintEnabledState(isEnabled);
+    storage.setTestPrintEnabled(isEnabled);
+    client.post('/print/test-toggle', { enabled: isEnabled }).catch(() => {});
+    if (isEnabled) {
+      message.success('🖨️ Impresiones ACTIVADAS en entorno TEST');
+    } else {
+      message.info('⏸️ Impresiones DESACTIVADAS en entorno TEST (Modo simulación)');
+    }
+  };
 
   useEffect(() => {
     checkSession();
@@ -101,29 +126,37 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await printApi.getPrinters();
       if (res.status === 'ok') {
-        const list = res.impresoras || [];
-        setPrintersList(list);
+        const zebraList = res.zebra_printers || res.impresoras || [];
+        const pdfList = res.pdf_printers || [];
+        setPrintersList(zebraList);
+        setPdfPrintersList(pdfList);
 
         const targetUser = currentUser || user;
         const targetPrinter = targetUser?.printer || storage.getActivePrinter() || activePrinter;
 
         if (targetPrinter) {
-          const found = list.find((p) => p.key === targetPrinter || p.value === targetPrinter);
+          const found = zebraList.find((p) => p.key === targetPrinter || p.value === targetPrinter || p.ip === targetPrinter);
           if (found) {
             setActivePrinter(found.key);
-            storage.setActivePrinter(found.key);
-            return;
           }
+        } else if (zebraList.length > 0 && !storage.getActivePrinter()) {
+          // Asignar primera por defecto si no hay ninguna
+          setActivePrinter(zebraList[0].key);
         }
 
-        // Si no tiene impresora asignada válida
-        if (!targetPrinter) {
-          setActivePrinter('');
-          storage.setActivePrinter('');
+        const targetPdfPrinter = storage.getActivePdfPrinter() || activePdfPrinter;
+        if (targetPdfPrinter) {
+          const foundPdf = pdfList.find((p) => p.key === targetPdfPrinter || p.value === targetPdfPrinter || p.ip === targetPdfPrinter);
+          if (foundPdf) {
+            setActivePdfPrinter(foundPdf.key);
+          }
+        } else if (pdfList.length > 0 && !storage.getActivePdfPrinter()) {
+          // Asignar primera de albaranes por defecto si no hay ninguna
+          setActivePdfPrinter(pdfList[0].key);
         }
       }
     } catch (err) {
-      console.warn('No se pudieron cargar las impresoras Zebra:', err.message);
+      console.warn('No se pudieron cargar las impresoras:', err.message);
     }
   };
 
@@ -135,13 +168,8 @@ export const AuthProvider = ({ children }) => {
       storage.setUserSession(loggedUser);
 
       const assignedPrinter = loggedUser.printer || storage.getActivePrinter() || '';
-      if (!assignedPrinter) {
-        setActivePrinter('');
-        storage.setActivePrinter('');
-        message.warning('No tienes impresora asignada');
-      } else {
+      if (assignedPrinter) {
         setActivePrinter(assignedPrinter);
-        storage.setActivePrinter(assignedPrinter);
       }
       return true;
     }
@@ -169,7 +197,13 @@ export const AuthProvider = ({ children }) => {
         activePrinter,
         setActivePrinter,
         printersList,
-        checkSession
+        activePdfPrinter,
+        setActivePdfPrinter,
+        pdfPrintersList,
+        fetchPrinters,
+        checkSession,
+        testPrintEnabled,
+        setTestPrintEnabled
       }}
     >
       {children}

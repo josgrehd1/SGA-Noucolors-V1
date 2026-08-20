@@ -76,6 +76,42 @@ class DocsService:
             elif prep == n and n > 0:
                 cabecera['IS_COMPLETAMENTE_PREPARADO'] = True
 
+        # --- Enriquecer con Dirección de Envío (ShipToCode) y Textos Especiales si es Pedido de Venta ---
+        if docentries and str(objtype) == '17':
+            try:
+                chunk_size = 30
+                for i in range(0, len(docentries), chunk_size):
+                    chunk = docentries[i:i + chunk_size]
+                    orders_res = SapRepository.get_data(
+                        'Orders',
+                        filter={'DocEntry__in': chunk},
+                        selection=['DocEntry', 'ShipToCode', 'DocumentSpecialLines', 'Comments'],
+                        all_results=True
+                    )
+                    if orders_res.get('status') == 'ok' and orders_res.get('data'):
+                        orders_map = {o['DocEntry']: o for o in orders_res['data']}
+                        for cab in cabeceras:
+                            o = orders_map.get(cab.get('DOCENTRY'))
+                            if o:
+                                ship_to = (o.get('ShipToCode') or '').strip()
+                                ship_upper = ship_to.upper()
+                                is_generic = ship_upper in ['ENVIO', 'ENVÍO', 'SHIPTO', 'PRINCIPAL', 'DEFAULT', '0', '1', ''] or ship_upper.startswith('ENVIO') or ship_upper.startswith('ENVÍO')
+
+                                sp_text = ""
+                                for sp in o.get('DocumentSpecialLines', []):
+                                    t = (sp.get('LineText') or '').strip()
+                                    if t:
+                                        sp_text = t
+                                        break
+
+                                info_text = sp_text or (ship_to if not is_generic else "")
+                                if info_text:
+                                    cab['PRIMERA_LINEA_TEXTO'] = info_text
+                                if not cab.get('COMMENTS') and o.get('Comments'):
+                                    cab['COMMENTS'] = str(o.get('Comments')).strip()
+            except Exception as e:
+                pass
+
         total_count = result.get('count', 0)
         total_pages = (total_count + per_page - 1) // per_page if per_page else 1
         
@@ -443,10 +479,27 @@ class DocsService:
             notify_sap_update(event_type="finalizar", details={"docentry": int(docentry), "objtype": "1250000001", "parcial": False})
             return res_traslado
 
+        # Determinar recursos de SAP según el tipo de documento:
+        # - Ventas (OBJTYPE == '17'): Orders ➔ DeliveryNotes (Albarán de Entrega)
+        # - Compras (OBJTYPE == '22'): PurchaseOrders ➔ PurchaseDeliveryNotes (Albarán de Compra / Entrada de Mercancías)
+        # - Devoluciones (OBJTYPE == '234000031'): ReturnRequest ➔ Returns
+        if str(objtype) == '22':
+            resource_pedido = "PurchaseOrders"
+            resource_albaran = "PurchaseDeliveryNotes"
+            tipo_doc_desc = "Albarán de Compra"
+        elif str(objtype) == '234000031':
+            resource_pedido = "ReturnRequest"
+            resource_albaran = "Returns"
+            tipo_doc_desc = "Devolución"
+        else:
+            resource_pedido = "Orders"
+            resource_albaran = "DeliveryNotes"
+            tipo_doc_desc = "Albarán de Entrega"
+
         # Obtener el pedido original de SAP para campos de cabecera y líneas
-        doc_original = SapRepository.get_data(resource="Orders", id=int(docentry))
+        doc_original = SapRepository.get_data(resource=resource_pedido, id=int(docentry))
         if doc_original.get('status') != 'ok' or not doc_original.get('data'):
-            return jsonify({"status": "error", "message": f"No se pudo consultar el pedido #{docentry} en SAP"}), 404
+            return jsonify({"status": "error", "message": f"No se pudo consultar el pedido #{docentry} en SAP ({resource_pedido})"}), 404
 
         doc_original_data = doc_original['data'][0]
 
@@ -483,7 +536,7 @@ class DocsService:
         mapping_fields = {'bin_from': 'U_BinFrom', 'bin_to': 'U_BinFrom'}
 
         res_albaran = AlbaranService.generar_albaran(
-            resource_albaran="DeliveryNotes",
+            resource_albaran=resource_albaran,
             doc_original=doc_original_data,
             lineas=lineas_a_procesar,
             mapping_fields=mapping_fields
@@ -630,15 +683,26 @@ class DocsService:
     @staticmethod
     def borrar_preparacion_stock(filter_payload):
         docentries = SapRepository.get_data(resource="NC_SGAWEB_DOCS", selection=["DocEntry"], filter=filter_payload)
-        if docentries.get('status') != 'ok':
-            raise Exception(docentries.get('message', 'Error buscando líneas a borrar'))
+        if docentries.get('status') != 'ok' or not docentries.get('data'):
+            # Intentar alternando el tipo de U_PedidoEntry (int vs str)
+            p_entry = filter_payload.get('U_PedidoEntry')
+            if p_entry is not None:
+                alt_filter = copy.deepcopy(filter_payload)
+                if isinstance(p_entry, str) and p_entry.isdigit():
+                    alt_filter['U_PedidoEntry'] = int(p_entry)
+                elif isinstance(p_entry, int):
+                    alt_filter['U_PedidoEntry'] = str(p_entry)
+                docentries = SapRepository.get_data(resource="NC_SGAWEB_DOCS", selection=["DocEntry"], filter=alt_filter)
 
-        rows = docentries.get('data', [])
+        rows = docentries.get('data', []) if docentries.get('status') == 'ok' else []
         for row in rows:
             if 'DocEntry' in row:
-                SapRepository.update(resource="NC_SGAWEB_DOCS", id=row['DocEntry'], payload={"U_Estado": 'C'})
+                try:
+                    SapRepository.update(resource="NC_SGAWEB_DOCS", id=row['DocEntry'], payload={"U_Estado": 'C'})
+                except Exception:
+                    pass
 
-        return True, f"Canceladas {len(rows)} línea(s) de preparación"
+        return True, f"Confirmación cancelada ({len(rows)} registro(s) liberados)"
 
     @staticmethod
     def change_default_bin(whscode, itemcode, new_bin):

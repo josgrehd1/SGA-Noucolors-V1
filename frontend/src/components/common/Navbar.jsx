@@ -1,5 +1,5 @@
 import React from 'react';
-import { Row, Col, Button, Dropdown, Space } from 'antd';
+import { Row, Col, Button, Dropdown, Space, Switch } from 'antd';
 import { PrinterOutlined, UserOutlined, LogoutOutlined, DownOutlined, MenuOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -12,11 +12,14 @@ const companyNameMap = {
 };
 
 export const Navbar = ({ onToggleSidebar, onOpenPrinterModal }) => {
-  const { user, logout, activePrinter, printersList } = useAuth();
+  const { user, logout, activePrinter, printersList, activePdfPrinter, pdfPrintersList, testPrintEnabled, setTestPrintEnabled } = useAuth();
   const navigate = useNavigate();
 
-  const activePrinterName = printersList.find((p) => p.key === activePrinter)?.value || 'Seleccionar Impresora';
+  const activeZebraName = printersList.find((p) => p.key === activePrinter || p.ip === activePrinter)?.name || printersList.find((p) => p.key === activePrinter)?.value || 'Zebra: Sin asignar';
+  const activePdfName = pdfPrintersList.find((p) => p.key === activePdfPrinter || p.ip === activePdfPrinter)?.name || 'Albaranes: Sin asignar';
   const displayCompanyName = companyNameMap[user?.company_db] || user?.company_db || 'COMERCIAL NOUCOLORS S.L.';
+
+  const isTestDb = Boolean(user?.company_db && (user.company_db.toUpperCase().includes('TEST') || user.company_db === 'NouColors_D_TEST'));
 
   const ventasMenu = {
     items: [
@@ -58,6 +61,31 @@ export const Navbar = ({ onToggleSidebar, onOpenPrinterModal }) => {
         </div>
       )
     },
+    ...(isTestDb ? [
+      { type: 'divider' },
+      {
+        key: 'test-print-toggle',
+        icon: <PrinterOutlined style={{ color: testPrintEnabled ? '#10b981' : '#64748b' }} />,
+        label: (
+          <div
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '2px 0', minWidth: 190 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: testPrintEnabled ? '#065f46' : '#64748b' }}>
+              Impresión (TEST)
+            </span>
+            <Switch
+              size="small"
+              checked={testPrintEnabled}
+              onChange={(checked) => setTestPrintEnabled(checked)}
+              checkedChildren="ON"
+              unCheckedChildren="OFF"
+              style={{ backgroundColor: testPrintEnabled ? '#10b981' : '#cbd5e1' }}
+            />
+          </div>
+        )
+      }
+    ] : []),
     { type: 'divider' },
     {
       key: 'logout',
@@ -147,8 +175,11 @@ export const Navbar = ({ onToggleSidebar, onOpenPrinterModal }) => {
                 icon={<PrinterOutlined />}
                 onClick={onOpenPrinterModal}
                 className="sga-printer-btn sga-printer-btn-styled"
+                title={`🏷️ ${activeZebraName}\n📄 ${activePdfName}`}
               >
-                <span className="sga-printer-text">{activePrinterName}</span>
+                <span className="sga-printer-text">
+                  {activePrinter ? activeZebraName.replace('Impresora ', '') : 'Impresoras'}
+                </span>
               </Button>
 
               <Dropdown menu={{ items: userMenuItems }} trigger={['click']}>

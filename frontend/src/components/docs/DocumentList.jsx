@@ -40,7 +40,10 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
   if (loading) {
     return (
       <div style={{ textAlign: 'center', padding: '60px 0' }}>
-        <Spin size="large" tip="Consultando documentos en SAP SQL Server..." />
+        <Spin size="large" />
+        <div style={{ marginTop: 12, color: '#64748b', fontSize: '0.9rem' }}>
+          Consultando documentos en SAP SQL Server...
+        </div>
       </div>
     );
   }
@@ -219,11 +222,15 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
         const transferComments = doc.COMMENTS || doc.COMENTARIO || doc.Comments || doc.PRIMERA_LINEA_TEXTO || '';
 
         return (
-          <Col xs={24} sm={12} md={8} lg={8} key={doc.DOCENTRY}>
+          <Col xs={24} sm={12} md={8} lg={8} key={doc.DOCENTRY} style={{ display: 'flex' }}>
             <Card
-              styles={{ body: { padding: '0 16px 16px 16px' } }}
+              styles={{ body: { padding: '0 16px 16px 16px', height: '100%', display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between' } }}
               className="sga-doc-card-container"
               style={{
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
                 borderRadius: 14,
                 overflow: 'hidden',
                 backgroundColor: '#ffffff',
@@ -241,7 +248,7 @@ export const DocumentList = ({ documents, loading, onOpenDetail, onDeactivateDoc
                 }}
               />
 
-              <div>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                 {/* 1. Fila de Encabezado: Nº Doc + Tag de Estado | Almacén | Fecha */}
                 <div className="sga-doc-card-header">
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
